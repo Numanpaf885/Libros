@@ -1,0 +1,45 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { codeCandidates, hashCode } from "@/lib/auth/codes";
+import { clientIp, isLimited, recordFailure, retryAfterSec } from "@/lib/auth/ratelimit";
+import { signReader } from "@/lib/auth/reader";
+import { COOKIE_SECURE, readerCookieName } from "@/lib/config";
+import { findCodeByHash, getBookBySlug } from "@/lib/db/repo";
+import { jsonError, parseBody, safe } from "@/lib/http";
+import type { AccessCode } from "@/lib/types";
+
+const schema = z.object({ code: z.string().min(1).max(40) });
+
+export const POST = safe(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
+  const key = `code:${clientIp(req)}`;
+  if (isLimited(key)) {
+    const mins = Math.max(1, Math.ceil(retryAfterSec(key) / 60));
+    return jsonError(429, `Demasiados intentos. Vuelve a intentarlo en ${mins} ${mins === 1 ? "minuto" : "minutos"}.`);
+  }
+  const body = await parseBody(req, schema);
+  const { slug } = await params;
+  if (!body) return jsonError(400, "Solicitud no válida");
+
+  const book = await getBookBySlug(slug);
+  let code: AccessCode | null = null;
+  if (book && book.status === "published") {
+    for (const c of codeCandidates(body.code)) {
+      code = await findCodeByHash(book.id, hashCode(c));
+      if (code) break;
+    }
+  }
+  if (!book || !code) {
+    recordFailure(key);
+    return jsonError(401, "Código incorrecto");
+  }
+  if (code.revoked || (code.expires_at && Date.parse(code.expires_at) <= Date.now())) {
+    recordFailure(key);
+    return jsonError(401, "Este código ha caducado o ya no está activo");
+  }
+  const { token, maxAge } = await signReader(book, code);
+  const res = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  res.cookies.set(readerCookieName(book.id), token, {
+    httpOnly: true, secure: COOKIE_SECURE, sameSite: "lax", path: "/", maxAge,
+  });
+  return res;
+});

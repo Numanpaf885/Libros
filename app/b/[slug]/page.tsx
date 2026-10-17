@@ -1,0 +1,24 @@
+import { notFound } from "next/navigation";
+import BookClient from "@/components/book/BookClient";
+import { getBookBySlug } from "@/lib/db/repo";
+import { SITE_CONTACT, SITE_NAME } from "@/lib/site";
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const b = await getBookBySlug((await params).slug);
+  return { title: b && b.status === "published" ? b.title : "Libro", robots: { index: false, follow: false } };
+}
+
+export default async function BookPage({ params }: { params: Promise<{ slug: string }> }) {
+  const book = await getBookBySlug((await params).slug);
+  if (!book || book.status !== "published") notFound();
+  // Public presentation fields only. Never keys, prefixes or hashes.
+  return (
+    <BookClient
+      book={{ slug: book.slug, title: book.title, author: book.author, category: book.category, year: book.year, description: book.description, pageCount: book.page_count }}
+      contact={SITE_CONTACT}
+      siteName={SITE_NAME}
+    />
+  );
+}

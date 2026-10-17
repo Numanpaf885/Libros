@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/* ---- Design tokens. Neutral interface; the book covers bring the colour. ---- */
+:root {
+  --bg: #ffffff;
+  --surface: #f6f6f4;
+  --line: #e4e4e0;
+  --line-strong: #8a8a84; /* control borders: >= 3:1 against the background */
+  --fg: #1a1a1a;
+  --muted: #5e5e59;
+  --accent: #1e3a5f;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --ok: #1f7a3a;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #111214;
+  --surface: #1a1b1e;
+  --line: #2a2c30;
+  --line-strong: #6f727a;
+  --fg: #ececec;
+  --muted: #a1a1a1;
+  --accent: #8db4e2;
+  --accent-fg: #111214;
+  --danger: #f28b82;
+  --ok: #7cc38d;
+  color-scheme: dark;
+}
+/* No JavaScript: follow the system setting */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #111214; --surface: #1a1b1e; --line: #2a2c30; --line-strong: #6f727a; --fg: #ececec; --muted: #a1a1a1;
+    --accent: #8db4e2; --accent-fg: #111214; --danger: #f28b82; --ok: #7cc38d; color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  --font-serif: var(--font-literata), Literata, Georgia, serif;
+  --radius-ctl: 5px;
+  --radius-card: 6px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html { background: var(--bg); }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+@layer base {
+  h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; text-wrap: balance; }
+  a { text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+}
+.font-serif { font-family: var(--font-serif); }
+.tnum { font-variant-numeric: tabular-nums; }
+/* theme toggle icon: moon in light, sun in dark (also correct with no JavaScript) */
+.theme-sun { display: none; }
+:root[data-theme="dark"] .theme-sun { display: block; }
+:root[data-theme="dark"] .theme-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .theme-sun { display: block; }
+  :root:not([data-theme]) .theme-moon { display: none; }
+}
+
+/* Browser surfaces carry the palette too */
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--fg); }
+input, textarea { caret-color: var(--accent); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-ctl border border-line-strong bg-bg px-4 py-2 text-sm font-medium text-fg;
+    transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out);
+  }
+  .btn:hover:not(:disabled) { background: var(--surface); border-color: var(--fg); }
+  .btn:disabled { @apply cursor-not-allowed opacity-50; }
+  .btn-primary { @apply border-accent bg-accent text-accent-fg; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); filter: brightness(1.12); }
+  .btn-danger { @apply border-danger text-danger; }
+  .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); border-color: var(--danger); }
+  .btn-sm { @apply min-h-8 px-3 text-[13px]; }
+  .btn-icon { @apply min-h-10 min-w-10 px-0; }
+  .field {
+    @apply w-full rounded-ctl border border-line-strong bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted;
+    transition: border-color 150ms var(--ease-out);
+  }
+  .field:hover { border-color: var(--fg); }
+  .field:focus { border-color: var(--accent); }
+  .card { @apply rounded-card border border-line bg-bg; }
+  .panel { @apply rounded-card border border-line bg-surface; }
+  .chip { @apply inline-flex items-center rounded-[4px] border px-2 py-0.5 text-xs font-medium; }
+  .chip-ok { @apply border-ok text-ok; }
+  .chip-draft { @apply border-line-strong text-muted; }
+  .chip-busy { @apply border-accent text-accent; }
+  .label { @apply mb-1.5 block text-sm font-medium text-fg; }
+  .hint { @apply text-sm text-muted; }
+  .err { @apply text-sm text-danger; }
+  .link { @apply text-accent underline underline-offset-4 hover:no-underline; }
+}
+
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.skeleton { background: var(--surface); animation: pulse-soft 1.6s ease-in-out infinite; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fade-in 220ms var(--ease-out) both; }
+
+/* Reader deterrents: nothing prints, nothing selects, nothing drags. */
+.reader-root, .reader-root * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.reader-root canvas { -webkit-user-drag: none; }
+@media print { html, body { display: none !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .skeleton { animation: none; }
+}

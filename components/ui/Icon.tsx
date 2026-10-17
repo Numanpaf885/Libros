@@ -1,0 +1,37 @@
+// Small authored icon set: one 24px grid, one 1.5 stroke, round caps. No icon dependency.
+const P = {
+  back: "M15 5l-7 7 7 7",
+  next: "M9 5l7 7-7 7",
+  down: "M6 9l6 6 6-6",
+  close: "M6 6l12 12M18 6L6 18",
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  copy: "M9 9h10v10H9zM5 15V5h10",
+  zoomIn: "M12 5v14M5 12h14",
+  zoomOut: "M5 12h14",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  shrink: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
+  fitWidth: "M4 5v14M20 5v14M8 12h8M8 12l2.5-2.5M8 12l2.5 2.5M16 12l-2.5-2.5M16 12l-2.5 2.5",
+  fitPage: "M7 3h10v18H7zM12 7v10M12 7l-2 2M12 7l2 2M12 17l-2-2M12 17l2-2",
+  upload: "M12 16V5m0 0L8 9m4-4l4 4M5 19h14",
+  link: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3A4 4 0 0011 18.7l1-1",
+  continuous: "M7 4h10v6H7zM7 14h10v6H7z",
+  single: "M7 3h10v18H7z",
+  book: "M5 5.5A1.5 1.5 0 016.5 4H19v14H6.5A1.5 1.5 0 005 19.5v-14zM5 19.5A1.5 1.5 0 006.5 21H19",
+  lock: "M7 11V8a5 5 0 0110 0v3M6 11h12v9H6z",
+  unlock: "M7 11V8a5 5 0 019.5-2M6 11h12v9H6z",
+  sun: "M16 12a4 4 0 11-8 0 4 4 0 018 0zM12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4",
+  moon: "M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z",
+  menu: "M4 7h16M4 12h16M4 17h16",
+  key: "M10 12a4 4 0 11-8 0 4 4 0 018 0zM10 12h11M18 12v3M15 12v2",
+  device: "M4 6h16v11H4zM2 20h20",
+  arrow: "M5 12h14M13 6l6 6-6 6",
+  more: "M4.5 12a1 1 0 102 0 1 1 0 10-2 0M11 12a1 1 0 102 0 1 1 0 10-2 0M17.5 12a1 1 0 102 0 1 1 0 10-2 0",
+} as const;
+export type IconName = keyof typeof P;
+export default function Icon({ name, size = 20, className = "" }: { name: IconName; size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d={P[name]} />
+    </svg>
+  );
+}
