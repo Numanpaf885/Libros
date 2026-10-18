@@ -468,7 +468,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   const arrow = "press absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-fg transition-opacity disabled:pointer-events-none disabled:opacity-25";
   const arrowBg = outside ? "hover:bg-fg/10" : "bg-bg/75 shadow-[0_1px_4px_rgba(0,0,0,0.25)]";
   return (
-    <div ref={stage} className="absolute inset-0" data-renders="0">
+    <div ref={stage} className="absolute inset-0 cursor-grab active:cursor-grabbing" data-renders="0">
       <div
         className="absolute inset-0 touch-none overflow-hidden"
         style={{ overscrollBehavior: "none" }}

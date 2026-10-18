@@ -66,7 +66,7 @@ export default function ActivateForm() {
         {mismatch && <p className="err mt-2">Las contraseñas no coinciden.</p>}
       </div>
       {error && <p role="alert" className="err">{error}</p>}
-      <button disabled={busy || !code || pw.length < 10 || pw !== pw2} className="btn btn-primary min-h-11">{busy ? "Activando…" : "Activar cuenta"}</button>
+      <button aria-busy={busy} disabled={busy || !code || pw.length < 10 || pw !== pw2} className="btn btn-primary min-h-11">Activar cuenta</button>
       <p className="text-center text-[15px]"><Link href="/entrar" className="underline underline-offset-4">¿Ya tienes cuenta? Entra</Link></p>
     </form>
   );

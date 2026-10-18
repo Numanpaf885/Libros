@@ -78,7 +78,7 @@ export default function LoginForm({ next }: { next: string }) {
         <input id="password" name="password" type="password" autoComplete="current-password" required maxLength={200} className="field" />
         {error && <p role="alert" className="err mt-2">{error}</p>}
       </div>
-      <button disabled={busy} className="btn btn-primary min-h-11">{busy ? "Entrando…" : "Entrar"}</button>
+      <button aria-busy={busy} disabled={busy} className="btn btn-primary min-h-11">Entrar</button>
       {canPasskey && (
         <>
           <div className="flex items-center gap-3 text-sm text-muted"><span className="h-px flex-1 bg-line" />o<span className="h-px flex-1 bg-line" /></div>

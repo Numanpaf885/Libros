@@ -33,7 +33,7 @@ export default function ConfirmDialog({ open, title, children, confirmLabel, dan
         <div className="space-y-3 text-[15px] text-muted">{children}</div>
         <div className="flex flex-wrap justify-end gap-2 pt-2">
           <button type="button" className="btn" onClick={onCancel}>Cancelar</button>
-          <button type="submit" disabled={confirmDisabled || busy} className={`btn ${danger ? "btn-danger" : "btn-primary"}`}>{busy ? "Un momento…" : confirmLabel}</button>
+          <button aria-busy={busy} type="submit" disabled={confirmDisabled || busy} className={`btn ${danger ? "btn-danger" : "btn-primary"}`}>{confirmLabel}</button>
         </div>
       </form>
     </dialog>

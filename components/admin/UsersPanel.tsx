@@ -200,7 +200,7 @@ export default function UsersPanel({ books }: { books: AdminBook[] }) {
         </div>
         <BookChooser books={books} value={choice} onChange={setChoice} idPrefix="nu" />
         {error && <p role="alert" className="err">{error}</p>}
-        <button disabled={busy || !username || !display.trim() || (!choice.all && choice.ids.length === 0)} className="btn btn-primary min-h-11">{busy ? "Creando…" : "Crear usuario y generar código"}</button>
+        <button aria-busy={busy} disabled={busy || !username || !display.trim() || (!choice.all && choice.ids.length === 0)} className="btn btn-primary min-h-11">Crear usuario y generar código</button>
       </form>
 
       {users === null ? (

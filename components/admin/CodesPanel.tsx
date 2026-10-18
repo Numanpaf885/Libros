@@ -136,7 +136,7 @@ export default function CodesPanel({ book, onBookChanged }: { book: AdminBook; o
           <input id={`exp-${book.id}`} name="expires" type="date" className="field" />
         </div>
         {formError && <p role="alert" className="err">{formError}</p>}
-        <button disabled={busy} className="btn btn-primary">{busy ? "Creando…" : mode === "custom" ? "Crear mis códigos" : "Generar códigos"}</button>
+        <button aria-busy={busy} disabled={busy} className="btn btn-primary">{mode === "custom" ? "Crear mis códigos" : "Generar códigos"}</button>
       </form>
 
       {fresh.length > 0 && (

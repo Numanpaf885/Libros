@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
  * Bottom sheet with a grab handle. Swipe the handle (or the title area) down to close.
  * Always a bottom sheet; callers only use it on phones.
  */
-export default function Sheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: React.ReactNode }) {
+export default function Sheet({ open, onClose, label, children, returnFocus }: { open: boolean; onClose: () => void; label: string; children: React.ReactNode; returnFocus?: React.RefObject<HTMLElement | null> }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
@@ -24,16 +24,19 @@ export default function Sheet({ open, onClose, label, children }: { open: boolea
     }
     if (!mounted) return;
     setClosing(true);
-    const t = setTimeout(() => { setMounted(false); setClosing(false); opener.current?.focus?.(); }, 250);
+    const t = setTimeout(() => { setMounted(false); setClosing(false); (returnFocus?.current ?? opener.current)?.focus?.({ preventScroll: true }); }, 250);
     return () => clearTimeout(t);
-  }, [open, mounted]);
+  }, [open, mounted, returnFocus]);
 
+  // Scroll lock that keeps the position: the page is simply not scrollable while the sheet is open
+  // (no position:fixed on the body, so scrollY is never reset), and focus never scrolls.
   useEffect(() => {
     if (!mounted) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panel.current?.focus();
-    return () => { document.body.style.overflow = prev; };
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    panel.current?.focus({ preventScroll: true });
+    return () => { el.style.overflow = prev; };
   }, [mounted]);
 
   useEffect(() => {
@@ -78,11 +81,11 @@ export default function Sheet({ open, onClose, label, children }: { open: boolea
   if (!mounted) return null;
   // In a portal: a parent with backdrop-filter (the header) would otherwise become the containing block of this fixed layer.
   return createPortal(
-    <div className={`fixed inset-0 z-[90] ${closing ? "sheet-closing" : ""}`}>
-      <div className="sheet-backdrop absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+    <div className={`fixed inset-0 z-[90] w-full max-w-[100vw] overflow-hidden ${closing ? "sheet-closing" : ""}`}>
+      <button type="button" tabIndex={-1} aria-label="Cerrar al tocar fuera" className="sheet-backdrop absolute inset-0 h-full w-full bg-black/40 touch-none" onClick={onClose} />
       <div
         ref={panel} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
-        className="sheet-panel absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto overscroll-contain rounded-t-[16px] border border-b-0 border-line bg-bg shadow-[var(--shadow-float)] outline-none"
+        className="sheet-panel absolute inset-x-0 bottom-0 left-0 right-0 w-full max-w-full max-h-[88dvh] overflow-y-auto overscroll-contain overscroll-y-contain rounded-t-[16px] border border-b-0 border-line bg-bg shadow-[var(--shadow-float)] outline-none"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div
@@ -91,6 +94,9 @@ export default function Sheet({ open, onClose, label, children }: { open: boolea
         >
           <span className="h-1.5 w-10 rounded-full bg-line-strong/60" aria-hidden="true" />
         </div>
+        <button type="button" className="btn btn-icon btn-ghost absolute right-1 top-0 min-h-11 min-w-11" aria-label="Cerrar" data-sheet-close onClick={onClose}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
         <div className="px-5 pb-2">{children}</div>
       </div>
     </div>,

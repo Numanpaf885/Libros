@@ -154,7 +154,7 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button disabled={up.busy || !file || !title.trim()} className="btn btn-primary">{up.busy ? "Subiendo…" : "Subir libro"}</button>
+        <button aria-busy={up.busy} disabled={up.busy || !file || !title.trim()} className="btn btn-primary">Subir libro</button>
         {up.busy && <button type="button" className="btn" onClick={up.cancel}>Cancelar</button>}
       </div>
       {(up.busy || up.progress) && <ProgressBar p={up.progress} />}
@@ -221,7 +221,7 @@ function BookRow({ book, reload, phone }: { book: AdminBook; reload: () => void;
       {panel && (
         <div role="cell" className="mt-4 border-t border-line pt-4">
           {panel === "edit" && (
-            <form className="grid max-w-2xl gap-4" onSubmit={(e) => {
+            <form className="grid max-w-2xl grid-cols-1 gap-4" onSubmit={(e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
               run(async () => {
@@ -318,11 +318,11 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   return (
     <main className="mx-auto w-full max-w-[1200px] flex-1 space-y-8 px-4 pb-20 pt-6 sm:px-6">
       <header className="flex items-center justify-between gap-3 border-b border-line pb-6">
-        <div>
+        <div className="min-w-0">
           <Link href="/" className="font-serif text-2xl font-semibold">{siteName}</Link>
-          <h1 className="mt-1 text-3xl sm:text-4xl">Administración</h1>
+          <h1 className="mt-1 text-3xl [overflow-wrap:anywhere] sm:text-4xl">Administración</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <ThemeToggle />
           <button className="btn" onClick={signOut}>Salir</button>
         </div>

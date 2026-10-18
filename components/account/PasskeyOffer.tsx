@@ -37,7 +37,7 @@ export default function PasskeyOffer({ user, onDone }: { user: Me; onDone: () =>
       </div>
       {error && <p role="alert" className="err">{error}</p>}
       <div className="flex flex-col gap-2">
-        <button type="button" className="btn btn-primary min-h-11" disabled={busy} onClick={activate}>{busy ? "Esperando a tu dispositivo…" : "Activar"}</button>
+        <button aria-busy={busy} type="button" className="btn btn-primary min-h-11" disabled={busy} onClick={activate}>Activar</button>
         <button type="button" className="btn min-h-11 border-transparent" disabled={busy} onClick={() => { markOffered(user.id); onDone(); }}>Ahora no</button>
       </div>
     </div>

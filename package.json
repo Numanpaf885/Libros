@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "hash-password": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/hash-password.ts",
-    "setup-sheet": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/setup-sheet.ts"
+    "setup-sheet": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/setup-sheet.ts",
+    "e2e": "node e2e/overflow.mjs && node e2e/menu.mjs && node e2e/cursor.mjs && node e2e/buttons.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",

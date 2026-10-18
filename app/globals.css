@@ -84,8 +84,23 @@ body {
 @layer base {
   h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; text-wrap: balance; }
   a { text-underline-offset: 3px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; animation: ring-in 160ms var(--ease-out) both; }
+
+  /* Hand cursor on everything that can be clicked, set once here instead of per component. */
+  a[href], area[href], button, summary, select, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
+  [role="switch"], [role="option"], [role="radio"], [role="checkbox"], [role="link"],
+  input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"], input[type="submit"], input[type="button"],
+  label[for], label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), label:has(> input[type="file"]), [data-clickable] { cursor: pointer; }
+  /* Disabled things are not clickable and get no hover effect (see the hover rules, which exclude them). */
+  button:disabled, select:disabled, input:disabled, [aria-disabled="true"], [role="button"][aria-disabled="true"],
+  label:has(> input:disabled), input:disabled + label, [data-disabled] { cursor: not-allowed; }
+  input[type="text"], input[type="password"], input[type="search"], input[type="email"], input[type="number"], input:not([type]), textarea { cursor: text; }
 }
+@keyframes ring-in { from { outline-color: transparent; } to { outline-color: var(--accent); } }
+
+/* Safety net only: a real overflow must still be fixed at its source (the e2e overflow test switches this off). */
+body { overflow-x: clip; }
+html { scroll-padding-top: calc(env(safe-area-inset-top) + 88px); }
 .font-serif { font-family: var(--font-serif); }
 .tnum { font-variant-numeric: tabular-nums; }
 /* theme toggle icon: moon in light, sun in dark (also correct with no JavaScript) */
@@ -103,20 +118,52 @@ input, textarea { caret-color: var(--accent); }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 
 @layer components {
+  /* ---- Buttons: one system (primary, secondary, ghost/icon, danger, link). Motion = transform, opacity, colour, shadow, 150-200 ms. ---- */
   .btn {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-ctl border border-line-strong bg-bg px-4 py-2 text-sm font-medium text-fg;
-    transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 380ms var(--spring-press);
+    @apply relative inline-flex min-h-10 items-center justify-center gap-2 rounded-ctl border border-line-strong bg-bg px-4 py-2 text-sm font-medium text-fg;
+    --spin: var(--fg);
+    transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), transform 200ms var(--spring-press);
     touch-action: manipulation;
   }
-  .btn:active:not(:disabled), .press:active { transform: scale(0.97); transition-duration: 90ms; }
-  .btn:hover:not(:disabled) { background: var(--surface); border-color: var(--fg); }
   .btn:disabled { @apply cursor-not-allowed opacity-50; }
-  .btn-primary { @apply border-accent bg-accent text-accent-fg; }
-  .btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); filter: brightness(1.12); }
-  .btn-danger { @apply border-danger text-danger; }
-  .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); border-color: var(--danger); }
+  .btn-primary { @apply border-accent bg-accent text-accent-fg; --spin: var(--accent-fg); }
+  .btn-danger { @apply border-danger text-danger; --spin: var(--danger); }
+  .btn-ghost { @apply border-transparent bg-transparent; }
+  .btn-link { @apply min-h-0 border-transparent bg-transparent px-1 py-0 text-accent; }
   .btn-sm { @apply min-h-8 px-3 text-[13px]; }
-  .btn-icon { @apply min-h-10 min-w-10 px-0; }
+  .btn-icon { @apply min-h-10 min-w-10 rounded-full px-0; isolation: isolate; }
+  /* the round hover background fades in behind the icon whatever the button's own background is */
+  .btn-icon::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: currentColor; opacity: 0; transition: opacity 160ms var(--ease-out); }
+
+  /* Hover only where there is a real hover (mouse), so nothing sticks on touch screens. */
+  @media (hover: hover) {
+    .btn:hover:not(:disabled):not([aria-busy="true"]) { background: var(--surface); border-color: var(--fg); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.10); }
+    .btn-primary:hover:not(:disabled):not([aria-busy="true"]) { background: color-mix(in srgb, var(--accent) 86%, var(--fg)); border-color: color-mix(in srgb, var(--accent) 86%, var(--fg)); }
+    .btn-danger:hover:not(:disabled):not([aria-busy="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); border-color: var(--danger); }
+    .btn-ghost:hover:not(:disabled):not([aria-busy="true"]):not(:active) { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: transparent; box-shadow: none; transform: none; }
+    .btn.btn-icon:hover:not(:disabled):not([aria-busy="true"]):not(:active) { transform: none; box-shadow: none; border-color: transparent; background-color: transparent; }
+    .btn.btn-icon:hover:not(:disabled):not([aria-busy="true"])::before { opacity: 0.09; }
+    .btn-link:hover:not(:disabled) { background: transparent; box-shadow: none; transform: none; }
+    .btn:hover:not(:disabled) .nudge { transform: translateX(3px); }
+  }
+  /* Press: a quick shrink and a springy return, on every button (icon buttons and cards too). */
+  .btn:active:not(:disabled):not([aria-busy="true"]), .press:active { transform: scale(0.97); transition-duration: 90ms; }
+  .nudge { transition: transform 180ms var(--ease-out); }
+  /* Loading: a spinner replaces the label, the button keeps its width and is not clickable. */
+  .btn[aria-busy="true"] { color: transparent !important; pointer-events: none; cursor: progress; }
+  .btn[aria-busy="true"] > * { opacity: 0; }
+  .btn[aria-busy="true"]::after { content: ""; position: absolute; width: 1.1em; height: 1.1em; left: calc(50% - 0.55em); top: calc(50% - 0.55em); border-radius: 9999px; border: 2px solid var(--spin); border-right-color: transparent; animation: spin 700ms linear infinite; }
+  /* text links: the underline grows from the left */
+  .link, .ulink {
+    background-image: linear-gradient(currentColor, currentColor), linear-gradient(color-mix(in srgb, currentColor 35%, transparent), color-mix(in srgb, currentColor 35%, transparent));
+    background-repeat: no-repeat; background-position: 0 100%, 0 100%; background-size: 0 1.5px, 100% 1.5px; text-decoration: none;
+    transition: background-size 200ms var(--ease-out), color 160ms var(--ease-out);
+  }
+  .ulink { background-size: 0 1.5px, 0 1.5px; }
+  .link { @apply text-accent; }
+  @media (hover: hover) {
+    .link:hover, .ulink:hover { background-size: 100% 1.5px, 100% 1.5px; }
+  }
   .field {
     @apply w-full rounded-ctl border border-line-strong bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted;
     transition: border-color 150ms var(--ease-out);
@@ -124,7 +171,7 @@ input, textarea { caret-color: var(--accent); }
   .field:hover { border-color: var(--fg); }
   .field:focus { border-color: var(--accent); }
   .card { @apply rounded-card border border-line bg-bg; }
-  .press { transition: transform 380ms var(--spring-press); touch-action: manipulation; }
+  .press { transition: transform 200ms var(--spring-press); touch-action: manipulation; }
   .panel { @apply rounded-card border border-line bg-surface; }
   .chip { @apply inline-flex items-center rounded-[4px] border px-2 py-0.5 text-xs font-medium; }
   .chip-ok { @apply border-ok text-ok; }
@@ -133,9 +180,9 @@ input, textarea { caret-color: var(--accent); }
   .label { @apply mb-1.5 block text-sm font-medium text-fg; }
   .hint { @apply text-sm text-muted; }
   .err { @apply text-sm text-danger; }
-  .link { @apply text-accent underline underline-offset-4 hover:no-underline; }
 }
 
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .skeleton { background: var(--surface); animation: pulse-soft 1.6s ease-in-out infinite; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -158,6 +205,18 @@ input, textarea { caret-color: var(--accent); }
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     backdrop-filter: blur(20px) saturate(180%);
   }
+}
+
+/* Floating site header: a rounded translucent bar that sticks while scrolling. */
+.site-header { position: sticky; top: 0; z-index: 40; padding: calc(env(safe-area-inset-top) + 8px) 8px 4px; pointer-events: none; }
+@media (min-width: 640px) { .site-header { padding-left: 12px; padding-right: 12px; padding-top: calc(env(safe-area-inset-top) + 12px); } }
+.glass-float {
+  pointer-events: auto; border-radius: 18px; border: 1px solid var(--glass-line); background: var(--glass-solid);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+:root[data-theme="dark"] .glass-float { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4); }
+@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .glass-float { background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
 }
 
 /* ---- Motion ---- */
@@ -231,8 +290,10 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
-  .btn, .press, .seg button, .seg .thumb { transition-property: background-color, border-color, color, opacity !important; transition-duration: 150ms !important; }
-  .btn:active:not(:disabled), .press:active, .seg button:active { transform: none; }
+  .btn, .press, .seg button, .seg .thumb, .nudge, .link, .ulink { transition-property: background-color, border-color, color, opacity, background-size !important; transition-duration: 150ms !important; }
+  .btn:hover, .btn:active, .press:active, .seg button:active, .btn:hover .nudge { transform: none !important; box-shadow: none !important; }
+  .btn[aria-busy="true"]::after { animation-duration: 1.6s; }
+  :focus-visible { animation: none; }
   .rise, .toast-in, .sheet-panel, .sheet-backdrop { animation: fade-in 200ms ease-out both !important; animation-delay: 0s !important; }
   .sheet-closing .sheet-panel { transform: none; opacity: 0; transition: opacity 150ms ease; }
   .skeleton, .page-skeleton { animation: none; }

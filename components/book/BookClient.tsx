@@ -135,7 +135,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                     />
                     {error && <p id="code-error" role="alert" className="err mt-2">{error}</p>}
                   </div>
-                  <button disabled={busy || !code.trim()} className="btn btn-primary min-h-11 w-full">{busy ? "Comprobando…" : "Abrir libro"}</button>
+                  <button aria-busy={busy} disabled={busy || !code.trim()} className="btn btn-primary min-h-11 w-full">Abrir libro</button>
                   <p className="hint">{contact}</p>
                   {me.status === "ready" && !me.user && <p className="hint">¿Tienes cuenta? <Link href={`/entrar?next=/b/${slug}`} className="underline underline-offset-4">Entra</Link> y tus libros se abrirán sin código.</p>}
                 </form>
@@ -166,7 +166,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                       <button className="btn min-h-11 px-6" onClick={() => open(1)}>Empezar desde el principio</button>
                     </>
                   ) : (
-                    <button className="btn btn-primary min-h-11 px-8" onClick={() => open(1)}>Leer<Icon name="arrow" size={18} /></button>
+                    <button className="btn btn-primary min-h-11 px-8" onClick={() => open(1)}>Leer<Icon name="arrow" size={18} className="nudge" /></button>
                   )}
                   <span className="inline-flex items-center gap-1.5 text-sm text-ok"><Icon name="unlock" size={16} />Desbloqueado</span>
                 </div>

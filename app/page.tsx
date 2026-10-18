@@ -63,7 +63,7 @@ export default async function Home() {
                 {featured.description && <p className="mt-5 line-clamp-4 text-base">{featured.description}</p>}
                 <p className="tnum mt-4 text-sm text-muted">{featured.pageCount} páginas</p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Link href={`/b/${featured.slug}#leer`} className="btn btn-primary min-h-11 px-6">Leer ahora<Icon name="arrow" size={18} /></Link>
+                  <Link href={`/b/${featured.slug}#leer`} className="btn btn-primary min-h-11 px-6">Leer ahora<Icon name="arrow" size={18} className="nudge" /></Link>
                   <Link href={`/b/${featured.slug}`} className="btn min-h-11 px-6">Ver detalles</Link>
                 </div>
               </div>
@@ -82,7 +82,7 @@ export default async function Home() {
         <ContinueReading books={unlocked} synced={synced} />
 
         {books.length > 0 && (
-          <section id="catalogo" aria-label="Catálogo" className="mx-auto w-full max-w-[1200px] scroll-mt-20 px-4 pb-16 pt-12 sm:px-6">
+          <section id="catalogo" aria-label="Catálogo" className="mx-auto w-full max-w-[1200px] px-4 pb-16 pt-12 sm:px-6">
             <CatalogGrid books={books} />
           </section>
         )}
