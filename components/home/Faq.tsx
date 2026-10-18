@@ -1,7 +1,7 @@
 import Icon from "@/components/ui/Icon";
 
 const QA = [
-  { q: "¿Cómo consigo un código?", a: "Te lo da directamente el autor o quien comparte el libro contigo. Cada código es personal y solo abre el libro para el que se creó." },
+  { q: "¿Cómo consigo un código?", a: "Te lo da directamente el propietario o quien comparte el libro contigo. Cada código es personal y solo abre el libro para el que se creó." },
   { q: "¿Puedo leer en el móvil?", a: "Sí. El lector se adapta a cualquier pantalla: desliza para cambiar de página, pellizca o usa los botones para ampliar y pásate al modo continuo si prefieres desplazarte." },
   { q: "¿Se guarda mi página?", a: "Sí. Recordamos por dónde ibas en este navegador, así que al volver puedes continuar donde lo dejaste. Si cambias de dispositivo empezarás desde el principio." },
 ];

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import AccountMenu from "@/components/account/AccountMenu";
 import { LogoLockup } from "@/components/brand/Logo";
 import Icon from "@/components/ui/Icon";
 import Sheet, { usePhone } from "@/components/ui/Sheet";
@@ -27,6 +28,7 @@ export default function SiteHeader({ siteName, largeTitle = false }: { siteName:
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          <AccountMenu />
           <ThemeToggle className="border-transparent bg-transparent" />
           <button type="button" className="btn btn-icon min-h-11 min-w-11 border-transparent bg-transparent md:hidden" aria-label="Abrir menú" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
             <Icon name="menu" />

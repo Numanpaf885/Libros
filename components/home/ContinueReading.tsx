@@ -16,7 +16,8 @@ function readSaved(books: CatalogBook[]): string {
   return JSON.stringify(out);
 }
 
-export default function ContinueReading({ books }: { books: CatalogBook[] }) {
+/** `synced`: pages saved on the account (signed-in readers). They win over this browser's own copy. */
+export default function ContinueReading({ books, synced }: { books: CatalogBook[]; synced?: Record<string, number> }) {
   // Server snapshot is empty, so nothing flashes before localStorage is read.
   const raw = useSyncExternalStore(
     (cb) => { window.addEventListener("storage", cb); return () => window.removeEventListener("storage", cb); },
@@ -35,8 +36,8 @@ export default function ContinueReading({ books }: { books: CatalogBook[] }) {
       </section>
     );
   }
-  const saved = JSON.parse(raw) as Record<string, number>;
-  const items = books.filter((b) => saved[b.slug]);
+  const saved = { ...(JSON.parse(raw) as Record<string, number>), ...(synced ?? {}) };
+  const items = books.filter((b) => saved[b.slug] > 0 && saved[b.slug] <= b.pageCount);
   if (!items.length) return null;
 
   return (

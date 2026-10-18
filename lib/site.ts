@@ -2,7 +2,7 @@
 export const SITE_NAME = process.env.SITE_NAME || "Libros";
 /** One line of intro text (footer and metadata). SITE_TAGLINE is still read for older .env files. */
 export const SITE_INTRO = process.env.SITE_INTRO || process.env.SITE_TAGLINE || "Libros para leer en cualquier dispositivo con tu código de acceso.";
-export const SITE_CONTACT = process.env.SITE_CONTACT || "¿No tienes código? Pídeselo al autor.";
+export const SITE_CONTACT = process.env.SITE_CONTACT || "¿No tienes código? Pídeselo al propietario.";
 
 const clean = (v: string | undefined) => (v ?? "").trim();
 const email = clean(process.env.SITE_EMAIL);

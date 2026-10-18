@@ -5,6 +5,7 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { loadPage, Unauthorized } from "@/lib/client/pages";
 import { realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
 import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
+import { flushBook, reportPage } from "@/lib/client/progress-sync";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
 import PageCanvas from "./PageCanvas";
@@ -245,7 +246,9 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   useEffect(() => {
     if (offer) return; // never overwrite the saved page before the offer is answered
     try { localStorage.setItem(lsKey, String(page)); } catch { /* ignore */ }
-  }, [lsKey, page, offer]);
+    reportPage(slug, page); // signed-in readers: synced to the account, at most every 20 s
+  }, [lsKey, page, offer, slug]);
+  useEffect(() => () => flushBook(slug), [slug]);
   useEffect(() => {
     const onHash = () => { const m = /^#p=(\d+)$/.exec(window.location.hash); if (m) goTo(Number(m[1])); };
     window.addEventListener("hashchange", onHash);

@@ -31,3 +31,11 @@ export async function api<T = unknown>(url: string, method = "GET", body?: unkno
 /** Message to show for any caught error: our API's (already Spanish) text, or a generic Spanish line. */
 export const errText = (e: unknown) =>
   e instanceof ApiError || e instanceof AuthError ? e.message : "Algo ha salido mal. Inténtalo de nuevo.";
+
+/** Like `api`, but a 401 is a normal answer here (wrong password, wrong code): show the server's own Spanish text. */
+export async function postJson<T = unknown>(url: string, body: unknown = {}, method = "POST"): Promise<T> {
+  const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(tr((data as { error?: string }).error ?? "Request failed"));
+  return data as T;
+}

@@ -12,6 +12,9 @@ export function assertSafeConfig(): void {
   if (isProd() && (process.env.SESSION_SECRET ?? "").length < 32) {
     problems.push("SESSION_SECRET must be set to a random string of at least 32 characters in production.");
   }
+  if (isProd() && (process.env.HASH_PEPPER ?? "").length < 32) {
+    problems.push("HASH_PEPPER must be set to a random string of at least 32 characters in production.");
+  }
   if (problems.length) throw new Error(`Unsafe production configuration:\n - ${problems.join("\n - ")}`);
 }
 

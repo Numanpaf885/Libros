@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import type { Table, TabName } from "./table";
@@ -22,10 +23,17 @@ function load(): State {
       books: [],
       access_codes: [],
       admins: [["admin", bcrypt.hashSync(pw, 10)]],
+      users: [],
+      user_books: [],
+      progress: [],
+      passkeys: [],
     };
   }
-  g.__mockSheet = st;
-  return st;
+  // Older mock files do not have the tabs added later.
+  const full = st;
+  for (const tab of Object.keys(TABS) as TabName[]) full[tab] ??= [];
+  g.__mockSheet = full;
+  return full;
 }
 function persist(st: State) {
   try {
@@ -36,30 +44,97 @@ function persist(st: State) {
   }
 }
 
+// Mock mode keeps a log of the requests the real Sheets backend would make (one line per API call),
+// so tests can count reads and writes against the quota. Format: "<epoch ms> <read|write> <tab>".
+// Outside the project folder on purpose: `next dev` reloads the page whenever a watched file changes.
+const OPS = process.env.MOCK_OPS_LOG || path.join(os.tmpdir(), "libros-mock-sheet-ops.log");
+function op(kind: "read" | "write", tab: string, n = 1) {
+  try {
+    fs.appendFileSync(OPS, `${`${Date.now()} ${kind} ${tab}\n`.repeat(n)}`);
+  } catch { /* ignore */ }
+}
+const matches = (r: string[], m: [number, string][]) => m.every(([c, v]) => r[c] === v);
+
 export const mockTable: Table = {
   async list(tab) {
+    op("read", tab);
     return load()[tab as TabName].map((r) => [...r]);
   },
+  async listMany(tabs) {
+    op("read", tabs.join("+"));
+    const st = load();
+    return Object.fromEntries(tabs.map((t) => [t, st[t as TabName].map((r) => [...r])]));
+  },
   async append(tab, row) {
+    op("write", tab);
     const st = load();
     st[tab as TabName].push([...row]);
     persist(st);
   },
+  async appendMany(tab, rows) {
+    if (!rows.length) return;
+    op("write", tab);
+    const st = load();
+    for (const r of rows) st[tab as TabName].push([...r]);
+    persist(st);
+  },
+  async modifyWhere(tab, match, fn) {
+    op("read", tab);
+    const st = load();
+    const i = st[tab as TabName].findIndex((r) => matches(r, match));
+    if (i < 0) return null;
+    const next = fn([...st[tab as TabName][i]]);
+    if (!next) return null;
+    op("write", tab);
+    st[tab as TabName][i] = [...next];
+    persist(st);
+    return [...next];
+  },
+  async upsertMany(tab, keyCols, rows) {
+    if (!rows.length) return;
+    op("read", tab);
+    const st = load();
+    const list = st[tab as TabName];
+    let updated = false;
+    const fresh: string[][] = [];
+    for (const row of rows) {
+      const i = list.findIndex((r) => keyCols.every((c) => r[c] === row[c]));
+      if (i >= 0) { list[i] = [...row]; updated = true; } else fresh.push([...row]);
+    }
+    if (updated) op("write", tab);
+    if (fresh.length) { op("write", tab); for (const r of fresh) list.push(r); }
+    persist(st);
+  },
+  async deleteMatching(tab, match) {
+    op("read", tab, 2); // rows + sheet id
+    const st = load();
+    const before = st[tab as TabName].length;
+    st[tab as TabName] = st[tab as TabName].filter((r) => !matches(r, match));
+    const n = before - st[tab as TabName].length;
+    if (n) op("write", tab);
+    persist(st);
+    return n;
+  },
   async updateById(tab, id, row) {
+    op("read", tab);
     const st = load();
     const rows = st[tab as TabName];
     const i = rows.findIndex((r) => r[0] === id);
     if (i < 0) return false;
+    op("write", tab);
     rows[i] = [...row];
     persist(st);
     return true;
   },
   async deleteWhere(tab, col, value) {
+    op("read", tab, 2);
     const st = load();
     const before = st[tab as TabName].length;
     st[tab as TabName] = st[tab as TabName].filter((r) => r[col] !== value);
     persist(st);
-    return before - st[tab as TabName].length;
+    const n = before - st[tab as TabName].length;
+    if (n) op("write", tab);
+    return n;
   },
 };
 void TABS;

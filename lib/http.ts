@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 import { isAdminRequest } from "./auth/admin";
+import { sameOrigin } from "./auth/origin";
 
 export const jsonError = (status: number, message: string) =>
   NextResponse.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
@@ -16,6 +17,9 @@ export async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T 
     return null;
   }
 }
+/** CSRF guard for state-changing requests: the Origin header must be this site. */
+export const guardOrigin = (req: Request): NextResponse | null =>
+  sameOrigin(req) ? null : jsonError(403, "Solicitud no permitida");
 export async function guardAdmin(req: Request): Promise<NextResponse | null> {
   return (await isAdminRequest(req)) ? null : jsonError(401, "No autorizado");
 }

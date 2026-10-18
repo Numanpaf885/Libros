@@ -106,6 +106,14 @@ export async function changeCode(id: string, newHash: string): Promise<AccessCod
   bust("access_codes");
   return next;
 }
+/** Same code, same id, new hash: used to move an old SHA-256 hash to the keyed HMAC after a successful match. */
+export async function upgradeCodeHash(id: string, hash: string): Promise<void> {
+  const rows = await table().list("access_codes");
+  const r = rows.find((x) => x[0] === id);
+  if (!r) return;
+  await table().updateById("access_codes", id, fromCode({ ...toCode(r), code_hash: hash }));
+  bust("access_codes");
+}
 export async function deleteCodesForBook(bookId: string) {
   const n = await table().deleteWhere("access_codes", 1, bookId);
   bust("access_codes");

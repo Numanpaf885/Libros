@@ -57,3 +57,35 @@ export interface AdminCode {
   expires_at: string;
   revoked: boolean;
 }
+
+export type UserStatus = "pending" | "active" | "disabled";
+export interface UserRecord {
+  id: string;
+  username: string;
+  display_name: string;
+  password_hash: string;
+  status: UserStatus;
+  setup_code_hash: string;
+  setup_code_expires_at: string; // ISO or ""
+  setup_attempts: number;
+  failed_logins: number;
+  locked_until: string; // ISO or ""
+  session_version: number;
+  created_at: string;
+  last_login_at: string;
+}
+export interface UserBookRecord { user_id: string; book_id: string; source: "admin" | "code"; code_id: string; granted_at: string }
+export interface ProgressRecord { user_id: string; book_id: string; page: number; updated_at: string }
+export interface PasskeyRecord {
+  id: string;
+  user_id: string;
+  credential_id: string;
+  public_key: string;
+  counter: number;
+  transports: string;
+  label: string;
+  created_at: string;
+  last_used_at: string;
+}
+/** book_id used in user_books for "Todos los libros". */
+export const ALL_BOOKS = "*";

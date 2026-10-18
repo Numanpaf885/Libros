@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { codeCandidates, hashCode } from "@/lib/auth/codes";
+import { codeCandidates, hashCode, legacyHashCode } from "@/lib/auth/codes";
 import { clientIp, isLimited, recordFailure, retryAfterSec } from "@/lib/auth/ratelimit";
 import { signReader } from "@/lib/auth/reader";
 import { COOKIE_SECURE, readerCookieName } from "@/lib/config";
-import { findCodeByHash, getBookBySlug } from "@/lib/db/repo";
-import { jsonError, parseBody, safe } from "@/lib/http";
+import { userFromRequest } from "@/lib/auth/user-session";
+import { findCodeByHash, getBookBySlug, upgradeCodeHash } from "@/lib/db/repo";
+import { addCodeGrant } from "@/lib/db/users";
+import { guardOrigin, jsonError, parseBody, safe } from "@/lib/http";
 import type { AccessCode } from "@/lib/types";
 
 const schema = z.object({ code: z.string().min(1).max(40) });
 
 export const POST = safe(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
+  const foreign = guardOrigin(req);
+  if (foreign) return foreign;
   const key = `code:${clientIp(req)}`;
   if (isLimited(key)) {
     const mins = Math.max(1, Math.ceil(retryAfterSec(key) / 60));
@@ -22,9 +26,14 @@ export const POST = safe(async (req: Request, { params }: { params: Promise<{ sl
 
   const book = await getBookBySlug(slug);
   let code: AccessCode | null = null;
+  let upgradeTo = ""; // set when the code matched only by its old SHA-256 hash
   if (book && book.status === "published") {
     for (const c of codeCandidates(body.code)) {
       code = await findCodeByHash(book.id, hashCode(c));
+      if (!code) {
+        code = await findCodeByHash(book.id, legacyHashCode(c));
+        if (code) upgradeTo = hashCode(c);
+      }
       if (code) break;
     }
   }
@@ -36,6 +45,10 @@ export const POST = safe(async (req: Request, { params }: { params: Promise<{ sl
     recordFailure(key);
     return jsonError(401, "Este código ha caducado o ya no está activo");
   }
+  if (upgradeTo) await upgradeCodeHash(code.id, upgradeTo);
+  // Signed in: keep this book on the account (for as long as the code stays valid).
+  const session = await userFromRequest(req);
+  if (session) await addCodeGrant(session.user.id, book.id, code.id);
   const { token, maxAge } = await signReader(book, code);
   const res = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   res.cookies.set(readerCookieName(book.id), token, {

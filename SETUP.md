@@ -71,6 +71,8 @@ Generate a random value, e.g. `openssl rand -base64 48`. This is `SESSION_SECRET
 | Variable | Value |
 | --- | --- |
 | `SESSION_SECRET` | random string from step 4 |
+| `HASH_PEPPER` | random string, 32+ characters (`node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`). Required in production. Keys the hash of access codes and activation codes; do not change it once codes exist |
+| `APP_ORIGIN` (optional) | address(es) where Face ID / fingerprint sign-in may be used, e.g. `https://librostmc0.vercel.app` (comma separated). The Vercel production domain is allowed automatically |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `client_email` from the JSON key |
 | `GOOGLE_PRIVATE_KEY` | `private_key` from the JSON key, in double quotes, keeping the `\n` sequences |
 | `SHEET_ID` | from the Sheet URL |
@@ -85,7 +87,7 @@ Generate a random value, e.g. `openssl rand -base64 48`. This is `SESSION_SECRET
 
 Leave `DATA_BACKEND` empty (or delete it) so the real services are used.
 
-**On Vercel:** Project → **Settings → Environment Variables**, add every variable above for Production (and Preview if you use it). For `GOOGLE_PRIVATE_KEY`, paste the key exactly as it appears in the JSON file (with the `\n` sequences). Do **not** set `DATA_BACKEND` on Vercel: the server refuses to start in production with `DATA_BACKEND=mock` or with a `SESSION_SECRET` shorter than 32 characters.
+**On Vercel:** Project → **Settings → Environment Variables**, add every variable above for Production (and Preview if you use it). For `GOOGLE_PRIVATE_KEY`, paste the key exactly as it appears in the JSON file (with the `\n` sequences). Do **not** set `DATA_BACKEND` on Vercel: the server refuses to start in production with `DATA_BACKEND=mock`, or with a `SESSION_SECRET` or `HASH_PEPPER` shorter than 32 characters.
 
 ## 6. Deploy
 
@@ -114,3 +116,15 @@ In a book's **Códigos** panel pick **Aleatorios** (generated) or **Los elijo yo
 - **Large books and resume:** books up to ~800 MB are read from your disk in pieces (never loaded whole). Use desktop Chrome. If an upload is interrupted, the book stays in status `uploading`; click **Continuar subida** on it and select the same PDF: only the missing pages are sent, and the book gets the status you chose at the start. A different file is refused. **Cancelar** stops an upload and keeps every page already sent.
 - **Vercel Hobby limits:** functions have a 4.5 MB request/response body limit. That is why page images go straight from your browser to R2. Each page image is far below that, and R2 uploads never touch a function anyway.
 - **Deterrents are deterrents.** Pages are drawn on a canvas and right-click, drag, selection, Ctrl/Cmd+S and printing are blocked, but a determined reader can still screenshot a page. Pages carry no per-reader marking.
+
+
+## Reader accounts (optional)
+
+Besides access codes, readers can have an account (username + password, optional Face ID / fingerprint) so their books and reading progress follow them across devices. Access codes keep working for everyone, signed in or not.
+
+1. Run `npm run setup-sheet` once. It creates the tabs `users`, `user_books`, `progress` and `passkeys` and never touches the existing ones.
+2. In `/admin`, open **Usuarios** → create a user, choose their books (or "Todos los libros") and send them the one-time activation code with **Copiar mensaje de WhatsApp**. The code is shown once, lasts 72 hours and is cancelled after 5 wrong tries.
+3. The reader opens `/activar`, enters username + code and chooses a password. From then on they sign in at `/entrar`.
+4. **Restablecer contraseña** gives a new code, clears the password and the Face ID / fingerprint devices and signs the person out everywhere. **Desactivar** blocks the account; **Eliminar** removes it with its progress.
+
+Google Sheets allows about 60 reads and 60 writes per minute for the whole app, so the account data is read with one request every 45 seconds at most, and reading progress is saved at most once every 20 seconds per book (plus once when the page is closed).

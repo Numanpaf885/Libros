@@ -8,10 +8,11 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import Icon from "@/components/ui/Icon";
 import Sheet, { usePhone } from "@/components/ui/Sheet";
 import Viewer from "@/components/reader/Viewer";
+import { useMe } from "@/lib/client/me";
 
 export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number }
-interface Meta { title: string; page_count: number }
-type Outcome = { ok: true } | { error: string };
+interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null }
+type Outcome = { ok: true; progress: number } | { error: string };
 
 async function fetchMeta(slug: string): Promise<Meta | null> {
   const res = await fetch(`/api/books/${encodeURIComponent(slug)}/meta`, { cache: "no-store" });
@@ -27,9 +28,12 @@ async function tryUnlock(slug: string, code: string): Promise<Outcome> {
     const msg = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
     return { error: msg ?? "No se pudo comprobar el código. Inténtalo de nuevo." };
   }
-  return (await fetchMeta(slug)) ? { ok: true } : { error: "No se pudo abrir el libro. Inténtalo de nuevo." };
+  const m = await fetchMeta(slug);
+  return m ? { ok: true, progress: m.progress ?? 0 } : { error: "No se pudo abrir el libro. Inténtalo de nuevo." };
 }
-const savedPage = (slug: string, count: number) => {
+/** The page saved on this device, unless the account has a later one from another device (`remote`). */
+const savedPage = (slug: string, count: number, remote = 0) => {
+  if (remote > 1 && remote <= count) return remote;
   try { const v = Number(localStorage.getItem(`br:last:${slug}`)); return v > 1 && v <= count ? v : 0; } catch { return 0; }
 };
 /** #p=N opens on that page; #leer just opens the reader. */
@@ -50,16 +54,18 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const [saved, setSaved] = useState(0);
   const [sheet, setSheet] = useState(false);
   const phone = usePhone(); // phones: the code is entered in a bottom sheet
+  const me = useMe();
 
+  const remote = useRef(0); // page saved on the account (signed-in readers), read with the meta request
   const open = useCallback((start: number | null) => {
-    const sp = savedPage(slug, book.pageCount);
+    const sp = savedPage(slug, book.pageCount, remote.current);
     setReading(start ? { start, offer: 0 } : { start: 1, offer: sp });
   }, [slug, book.pageCount]);
 
   // The initial check must be safe to run twice (React StrictMode re-runs effects in dev): the
   // job is started once and kept in a ref, so a second run reuses it instead of finding the
   // ?code= already stripped from the URL and discarding the first run's result.
-  const initial = useRef<Promise<{ unlocked: boolean; error?: string; hash: { page: number | null; open: boolean }; viaLink: boolean }> | null>(null);
+  const initial = useRef<Promise<{ unlocked: boolean; error?: string; hash: { page: number | null; open: boolean }; viaLink: boolean; progress: number }> | null>(null);
   useEffect(() => {
     if (!initial.current) {
       const url = new URL(window.location.href);
@@ -69,16 +75,17 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
         // Strip the secret from the address bar / history before anything else happens (keep #p=N).
         url.searchParams.delete("code");
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-        initial.current = tryUnlock(slug, c).then((o) => ({ unlocked: "ok" in o, error: "error" in o ? o.error : undefined, hash, viaLink: true }));
+        initial.current = tryUnlock(slug, c).then((o) => ({ unlocked: "ok" in o, error: "error" in o ? o.error : undefined, hash, viaLink: true, progress: "ok" in o ? o.progress : 0 }));
       } else {
-        initial.current = fetchMeta(slug).then((m) => ({ unlocked: !!m, hash, viaLink: false }));
+        initial.current = fetchMeta(slug).then((m) => ({ unlocked: !!m, hash, viaLink: false, progress: m?.progress ?? 0 }));
       }
     }
     let dead = false;
     initial.current.then((r) => {
       if (dead) return;
+      remote.current = r.progress;
       setUnlocked(r.unlocked);
-      setSaved(savedPage(slug, book.pageCount));
+      setSaved(savedPage(slug, book.pageCount, r.progress));
       if (r.error) setError(r.error);
       setChecking(false);
       // A ?code= link and a #p= / #leer link go straight into the book.
@@ -89,6 +96,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
 
   const close = useCallback(() => {
     setReading(null);
+    remote.current = 0; // this device's copy is now the latest
     setSaved(savedPage(slug, book.pageCount));
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
   }, [slug, book.pageCount]);
@@ -105,7 +113,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                     setBusy(true); setError("");
                     const h = readHash();
                     tryUnlock(slug, code).then((o) => {
-                      if ("ok" in o) { setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount)); open(h.page); }
+                      if ("ok" in o) { remote.current = o.progress; setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount, o.progress)); open(h.page); }
                       else setError(o.error);
                       setBusy(false);
                     }).catch(() => { setError("Algo ha salido mal. Inténtalo de nuevo."); setBusy(false); });
@@ -129,6 +137,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                   </div>
                   <button disabled={busy || !code.trim()} className="btn btn-primary min-h-11 w-full">{busy ? "Comprobando…" : "Abrir libro"}</button>
                   <p className="hint">{contact}</p>
+                  {me.status === "ready" && !me.user && <p className="hint">¿Tienes cuenta? <Link href={`/entrar?next=/b/${slug}`} className="underline underline-offset-4">Entra</Link> y tus libros se abrirán sin código.</p>}
                 </form>
   );
 

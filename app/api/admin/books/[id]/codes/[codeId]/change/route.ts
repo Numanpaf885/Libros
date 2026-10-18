@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOM_CODE_HELP, formatCode, generateCode, hashCode, parseCustomCode } from "@/lib/auth/codes";
+import { CUSTOM_CODE_HELP, formatCode, generateCode, hashCode, hashesOf, parseCustomCode } from "@/lib/auth/codes";
 import { changeCode, getCode, listCodes } from "@/lib/db/repo";
 import { guardAdmin, jsonError, ok, parseBody, safe } from "@/lib/http";
 
@@ -22,11 +22,11 @@ export const POST = safe(async (req: Request, { params }: { params: Promise<{ id
   if (body.code !== undefined && body.code.trim() !== "") {
     const code = parseCustomCode(body.code);
     if (!code) return jsonError(400, CUSTOM_CODE_HELP);
-    if (taken.has(hashCode(code))) return jsonError(409, `El código ${code} ya existe en este libro.`);
+    if (hashesOf(code).some((x) => taken.has(x))) return jsonError(409, `El código ${code} ya existe en este libro.`);
     plain = share = display = code;
   } else {
     plain = generateCode();
-    while (taken.has(hashCode(plain))) plain = generateCode();
+    while (hashesOf(plain).some((x) => taken.has(x))) plain = generateCode();
     share = plain;
     display = formatCode(plain);
   }

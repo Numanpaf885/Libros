@@ -12,6 +12,7 @@ import { fmtDate, fmtSize } from "@/lib/client/format";
 import { formatEta, uploadFlow, type Progress as UploadProgress, type UploadMode } from "@/lib/client/upload";
 import type { AdminBook } from "@/lib/types";
 import CodesPanel from "./CodesPanel";
+import UsersPanel from "./UsersPanel";
 
 const phoneQuery = "(max-width: 767px)";
 function useIsPhone() {
@@ -293,6 +294,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const phone = useIsPhone();
   const [books, setBooks] = useState<AdminBook[] | null>(null);
   const [version, setVersion] = useState(0);
+  const [tab, setTab] = useState<"books" | "users">("books");
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
@@ -326,6 +328,19 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       </header>
 
+      <div role="tablist" aria-label="Secciones" className="flex gap-2">
+        {([["books", "Libros"], ["users", "Usuarios"]] as const).map(([id, label]) => (
+          <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}
+            className={`btn min-h-11 ${tab === id ? "btn-primary" : ""}`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "users" ? (
+        <div role="tabpanel" id="panel-users" aria-labelledby="tab-users">
+          <UsersPanel books={(books ?? []).filter((b) => b.status !== "uploading")} />
+        </div>
+      ) : (
+      <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
       <UploadCard onDone={load} phone={phone} />
 
       {books === null ? (
@@ -344,6 +359,8 @@ export default function AdminApp({ siteName }: { siteName: string }) {
             </ul>
           </div>
         </section>
+      )}
+      </div>
       )}
     </main>
   );

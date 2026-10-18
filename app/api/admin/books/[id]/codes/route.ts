@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { CUSTOM_CODE_HELP, formatCode, generateCode, hashCode, parseCustomCode } from "@/lib/auth/codes";
+import { CUSTOM_CODE_HELP, formatCode, generateCode, hashCode, hashesOf, parseCustomCode } from "@/lib/auth/codes";
 import { addCodes, getBookById, listCodes } from "@/lib/db/repo";
 import { guardAdmin, jsonError, ok, parseBody, safe } from "@/lib/http";
 import type { AdminCode } from "@/lib/types";
@@ -28,7 +28,7 @@ const gen = z.object({
   expires_at: z.string().datetime().nullable().default(null),
 });
 
-// Plain codes are returned ONCE here (the sheet only stores the SHA-256 hash).
+// Plain codes are returned ONCE here (the sheet only stores the HMAC-SHA-256 hash).
 export const POST = safe(async (req: Request, { params }: Ctx) => {
   const denied = await guardAdmin(req);
   if (denied) return denied;
@@ -51,14 +51,14 @@ export const POST = safe(async (req: Request, { params }: Ctx) => {
       const code = parseCustomCode(c.code);
       if (!code) return jsonError(400, `${CUSTOM_CODE_HELP} (“${c.code.trim().slice(0, 40)}”)`);
       const h = hashCode(code);
-      if (existing.has(h) || seen.has(h)) return jsonError(409, `El código ${code} ya existe en este libro.`);
+      if (hashesOf(code).some((x) => existing.has(x)) || seen.has(h)) return jsonError(409, `El código ${code} ya existe en este libro.`);
       seen.add(h);
       make(code, code, code, c.label || `Lector ${i + 1}`);
     }
   } else {
     for (let i = 0; i < body.count; i++) {
       let plain = generateCode();
-      while (existing.has(hashCode(plain))) plain = generateCode();
+      while (hashesOf(plain).some((x) => existing.has(x))) plain = generateCode();
       const label = body.labels[i] || (body.label ? (body.count > 1 ? `${body.label} ${i + 1}` : body.label) : `Lector ${i + 1}`);
       make(plain, plain, formatCode(plain), label);
     }

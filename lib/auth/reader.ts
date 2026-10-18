@@ -3,6 +3,8 @@ import { READER_TTL_S, readerCookieName, sessionSecret } from "../config";
 import { getBookBySlug, getCode } from "../db/repo";
 import type { AccessCode, Book } from "../types";
 import { cookieFrom } from "./admin";
+import { userCanRead } from "./access";
+import { userFromRequest } from "./user-session";
 
 export async function signReader(book: Book, code: AccessCode): Promise<{ token: string; maxAge: number }> {
   let maxAge = READER_TTL_S;
@@ -20,7 +22,8 @@ export async function signReader(book: Book, code: AccessCode): Promise<{ token:
 
 export interface ReaderSession {
   book: Book;
-  code: AccessCode;
+  /** The access code behind the book cookie, or null when a signed-in account gives the access. */
+  code: AccessCode | null;
 }
 /** Signature + live re-check of the code (revoked / expired / replaced) against the sheet cache. */
 export async function verifyReaderToken(book: Book, token: string | undefined): Promise<AccessCode | null> {
@@ -41,5 +44,8 @@ export async function readerSession(req: Request, slug: string): Promise<ReaderS
   const book = await getBookBySlug(slug);
   if (!book || book.status !== "published") return null;
   const code = await verifyReaderToken(book, cookieFrom(req, readerCookieName(book.id)));
-  return code ? { book, code } : null;
+  if (code) return { book, code };
+  // No valid code cookie: a signed-in reader may still have the book through their account.
+  const u = await userFromRequest(req);
+  return u && (await userCanRead(u.user, book)) ? { book, code: null } : null;
 }

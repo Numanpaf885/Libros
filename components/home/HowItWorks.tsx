@@ -2,7 +2,7 @@ import Icon, { type IconName } from "@/components/ui/Icon";
 
 const STEPS: { icon: IconName; title: string; text: string }[] = [
   { icon: "book", title: "Elige un libro", text: "Explora el catálogo y abre la ficha del libro que te interese." },
-  { icon: "key", title: "Introduce tu código", text: "El autor te da un código personal. Lo escribes una vez en la ficha del libro." },
+  { icon: "key", title: "Introduce tu código", text: "El propietario te da un código personal. Lo escribes una vez en la ficha del libro." },
   { icon: "device", title: "Lee en cualquier dispositivo", text: "Ordenador, tableta o móvil: el libro se abre en el navegador, sin instalar nada." },
 ];
 

@@ -11,9 +11,12 @@ import { Logo } from "@/components/brand/Logo";
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeader";
 import Icon from "@/components/ui/Icon";
+import { readableBookIds } from "@/lib/auth/access";
 import { verifyReaderToken } from "@/lib/auth/reader";
-import { readerCookieName } from "@/lib/config";
+import { userFromToken } from "@/lib/auth/user-session";
+import { readerCookieName, USER_COOKIE } from "@/lib/config";
 import { listBooks } from "@/lib/db/repo";
+import { progressOf } from "@/lib/db/users";
 import { SITE_NAME } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +28,18 @@ export default async function Home() {
   const unlockedIds = new Set(
     (await Promise.all(published.map(async (b) => ((await verifyReaderToken(b, jar.get(readerCookieName(b.id))?.value)) ? b.id : null)))).filter((x): x is string => !!x),
   );
+  // A signed-in reader also has the books of the account, and their synced progress.
+  const session = await userFromToken(jar.get(USER_COOKIE)?.value);
+  let synced: Record<string, number> | undefined;
+  if (session) {
+    for (const id of await readableBookIds(session.user, published)) unlockedIds.add(id);
+    const slugOf = new Map(published.map((b) => [b.id, b.slug]));
+    synced = {};
+    for (const p of await progressOf(session.user.id)) {
+      const slug = slugOf.get(p.book_id);
+      if (slug && p.page > 0) synced[slug] = p.page;
+    }
+  }
   const books: CatalogBook[] = published.map((b) => ({
     slug: b.slug, title: b.title, author: b.author, category: b.category, year: b.year, description: b.description,
     pageCount: b.page_count, updatedAt: b.updated_at, unlocked: unlockedIds.has(b.id),
@@ -64,7 +79,7 @@ export default async function Home() {
           </section>
         )}
 
-        <ContinueReading books={unlocked} />
+        <ContinueReading books={unlocked} synced={synced} />
 
         {books.length > 0 && (
           <section id="catalogo" aria-label="Catálogo" className="mx-auto w-full max-w-[1200px] scroll-mt-20 px-4 pb-16 pt-12 sm:px-6">
