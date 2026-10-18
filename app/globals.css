@@ -213,8 +213,7 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 
 /* Reader */
 .reader-root { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
-.reader-bar { transition: transform 360ms var(--spring), opacity 220ms ease; padding-top: env(safe-area-inset-top); padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
-.reader-bar[data-hidden="true"] { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+.reader-bar { padding-top: calc(env(safe-area-inset-top) + 4px); padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
 .seg { position: relative; display: inline-flex; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .seg button { position: relative; z-index: 1; min-height: 40px; min-width: 52px; padding: 0 12px; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--muted); transition: color 200ms ease, transform 380ms var(--spring-press); touch-action: manipulation; }
 .seg button:active { transform: scale(0.97); }
@@ -232,12 +231,11 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
-  .btn, .press, .seg button, .seg .thumb, .reader-bar { transition-property: background-color, border-color, color, opacity !important; transition-duration: 150ms !important; }
+  .btn, .press, .seg button, .seg .thumb { transition-property: background-color, border-color, color, opacity !important; transition-duration: 150ms !important; }
   .btn:active:not(:disabled), .press:active, .seg button:active { transform: none; }
   .rise, .toast-in, .sheet-panel, .sheet-backdrop { animation: fade-in 200ms ease-out both !important; animation-delay: 0s !important; }
   .sheet-closing .sheet-panel { transform: none; opacity: 0; transition: opacity 150ms ease; }
   .skeleton, .page-skeleton { animation: none; }
-  .reader-bar[data-hidden="true"] { transform: none; }
   .large-title { transform: none; }
   .logo-ground { transform: none; }
   .opening-out { animation-duration: 300ms; }

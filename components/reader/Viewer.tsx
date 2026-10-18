@@ -4,7 +4,7 @@ import Icon from "@/components/ui/Icon";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { loadPage, Unauthorized } from "@/lib/client/pages";
 import { realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
-import BookMode, { type BookHandle } from "./BookMode";
+import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
 import PageCanvas from "./PageCanvas";
@@ -29,11 +29,17 @@ const GAP = 12;
 const DEFAULT_RATIO = 1.4142;
 const tb = "btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!";
 const MODE_KEY = "br:mode";
+const EFFECT_KEY = "br:effect";
+const EFFECTS: { v: PageEffect; label: string }[] = [{ v: "turn", label: "Pasar página" }, { v: "slide", label: "Deslizar" }, { v: "none", label: "Ninguno" }];
 const OPEN_MIN_MS = 1500; // the opening animation lasts at least this long...
 const OPEN_MAX_MS = 3300; // ...and never longer (3.3 s + the 0.4 s fade-out < 4 s): after this the pages that are missing show skeletons
 
 const isPhone = () => window.matchMedia("(max-width: 767px), (pointer: coarse) and (max-width: 1000px)").matches;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function initialEffect(): PageEffect {
+  try { const v = localStorage.getItem(EFFECT_KEY); if (v === "turn" || v === "slide" || v === "none") return v; } catch { /* ignore */ }
+  return reducedMotion() ? "none" : "turn"; // with reduced motion the default is no effect
+}
 function initialMode(): ReadMode {
   try { const v = localStorage.getItem(MODE_KEY); if (v === "book" || v === "pdf") return v; } catch { /* ignore */ }
   return isPhone() ? "book" : "pdf"; // Book mode on phones, PDF mode on desktop, until the reader picks one
@@ -43,6 +49,8 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const lsKey = `br:last:${slug}`;
   const [mode, setModeState] = useState<ReadMode>(initialMode);
   const [reduced] = useState(reducedMotion);
+  const [effect, setEffectState] = useState<PageEffect>(initialEffect);
+  const [fxMenu, setFxMenu] = useState(false);
   const [fit, setFit] = useState<Fit>("width");
   const [menu, setMenu] = useState(false); // phones: secondary controls live in a menu so the toolbar stays on one line
   const [customPct, setCustomPct] = useState(100);
@@ -50,9 +58,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const [offer, setOffer] = useState(offerIn);
   const [box, setBox] = useState({ w: 0, h: 0 }); // the whole reader (Book mode)
   const [size, setSize] = useState({ w: 0, h: 0 }); // the PDF scroll area
-  const [barH, setBarH] = useState(56);
-  const [barOn, setBarOn] = useState(true);
-  const [focusIn, setFocusIn] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [est, setEst] = useState<number | null>(null); // aspect ratio learned from the first page that loads
   const [ratios, setRatios] = useState<Record<number, number>>({}); // pages that differ from est
@@ -61,24 +66,30 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const [full, setFull] = useState(false);
   const [phase, setPhase] = useState<"in" | "out" | "off">("in"); // opening animation
   const root = useRef<HTMLDivElement>(null);
-  const bar = useRef<HTMLElement>(null);
+  const area = useRef<HTMLDivElement>(null);
+  const renders = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
   const book = useRef<BookHandle>(null);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchor = useRef({ page: 1, delta: 0 });
   const placed = useRef(false);
-  const lastTop = useRef(0);
   const loadFrac = useRef(0);
   const cb = useRef({ onExpired });
   useEffect(() => { cb.current = { onExpired }; });
 
-  const wide = box.w >= 1024 && box.w > box.h;
   const setMode = (m: ReadMode) => {
     setModeState(m);
     if (m === "pdf") placed.current = false; // the scroller is created again: place it on the current page
-    setBarOn(true);
     try { localStorage.setItem(MODE_KEY, m); } catch { /* ignore */ }
   };
+
+  const setEffect = (v: PageEffect) => {
+    setEffectState(v);
+    setFxMenu(false);
+    try { localStorage.setItem(EFFECT_KEY, v); } catch { /* ignore */ }
+  };
+  // render counter (read by the performance tests)
+  useLayoutEffect(() => { if (root.current) root.current.dataset.renders = String(++renders.current); });
 
   // ---- opening: preload + decode the starting page and its neighbours while the animation plays ----
   useEffect(() => {
@@ -119,10 +130,10 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   }, []);
 
   // ---- geometry (PDF mode) ----------------------------------------------------------
-  const LEAD = barH + PAD;
+  const LEAD = PAD; // the toolbar is a normal row above the page area: nothing scrolls under it
   const ratio0 = est ?? DEFAULT_RATIO;
   const availW = Math.max(size.w - 2 * PAD, 120);
-  const availH = Math.max(size.h - barH - 2 * PAD, 120);
+  const availH = Math.max(size.h - 2 * PAD, 120);
   const fitW = Math.min(availW, 1040); // comfortable line length on wide screens; zoom in for more
   const W = fit === "width" ? fitW : fit === "page" ? Math.min(fitW, availH / ratio0) : (REF_W * customPct) / 100;
   const pct = Math.round((W / REF_W) * 100);
@@ -158,16 +169,9 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
 
   // ---- sizes ----
   useEffect(() => {
-    const el = root.current;
+    const el = area.current;
     if (!el) return;
     const ro = new ResizeObserver(() => setBox({ w: el.clientWidth, h: el.clientHeight }));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  useEffect(() => {
-    const el = bar.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setBarH(Math.round(el.getBoundingClientRect().height) || 56));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -190,10 +194,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
       const g = geo.current;
       const top = el.scrollTop;
       setScrollTop(top);
-      // the toolbar gets out of the way while reading and comes back on scroll up
-      const d = top - lastTop.current;
-      if (top < 24 || d < -10) { setBarOn(true); lastTop.current = top; }
-      else if (d > 10) { setBarOn(false); lastTop.current = top; }
       const pTop = indexAt(top, g.offs);
       anchor.current = { page: pTop, delta: top - g.offs[pTop - 1] };
       const cur = top + g.size.h >= g.total - 2 ? pageCount : indexAt(top + g.lead + Math.min(0.3 * g.size.h, 120), g.offs);
@@ -210,7 +210,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     anchor.current = { page: n, delta: -LEAD };
     const top = Math.max(0, offs[n - 1] - LEAD);
     el.scrollTop = top;
-    lastTop.current = top;
     setScrollTop(top); // render the window around page n right away, never the pages in between
   };
   const goTo = (n: number) => {
@@ -234,7 +233,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     const want = offs[anchor.current.page - 1] + anchor.current.delta;
     if (Math.abs(want - el.scrollTop) > 1) el.scrollTop = want;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [W, est, ratios, barH]);
+  }, [W, est, ratios]);
   // ---- URL (#p=N), saved page ----
   useEffect(() => {
     const t = setTimeout(() => {
@@ -259,7 +258,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     const stop = (e: Event) => e.preventDefault();
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ["s", "p"].includes(e.key.toLowerCase())) { e.preventDefault(); return; }
-      if (e.key === "Tab") setBarOn(true);
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.getAttribute("role") === "radio")) return;
       if (e.key === "ArrowRight" || (!pdf && e.key === "PageDown")) { e.preventDefault(); turn(1); }
@@ -308,10 +306,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const winTo = ready && pdf ? indexAt(scrollTop + 1.75 * size.h, offs) : -1;
   const innerW = Math.max(size.w, W + 2 * PAD);
 
-  const barVisible = barOn || menu || editing !== null || focusIn || !!offer;
-  const bookUnit = unitOf(page, wide);
-  const prevOff = bookUnit <= 0;
-  const nextOff = bookUnit >= unitCount(pageCount, wide) - 1;
 
   // Zoom (PDF only), fullscreen and theme. Inline from sm up; inside the "more" menu on phones.
   const secondary = (inMenu: boolean) => (
@@ -326,6 +320,28 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
           {!inMenu && <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />}
         </>
       )}
+      {!pdf && (inMenu ? (
+        <div role="radiogroup" aria-label="Efecto de página" className="flex w-full items-center gap-1 px-1 py-1">
+          <span className="mr-1 text-[13px] text-muted">Efecto</span>
+          {EFFECTS.map((f) => (
+            <button key={f.v} type="button" role="radio" aria-checked={effect === f.v} onClick={() => setEffect(f.v)} className={`btn btn-sm min-h-11 px-2.5 ${effect === f.v ? "btn-primary" : ""}`}>{f.label}</button>
+          ))}
+        </div>
+      ) : (
+        <div className="relative">
+          <button type="button" className={`${tb} ${fxMenu ? "bg-fg/10!" : ""}`} aria-haspopup="menu" aria-expanded={fxMenu} onClick={() => setFxMenu((v) => !v)} aria-label="Efecto de página" title="Efecto de página"><Icon name="pages" /></button>
+          {fxMenu && (
+            <div role="menu" aria-label="Efecto de página" className="absolute right-0 top-full z-40 mt-1 w-44 rounded-card border border-line bg-bg p-1 shadow-[var(--shadow-float)]">
+              <p className="px-3 pb-1 pt-2 text-[13px] text-muted">Efecto de página</p>
+              {EFFECTS.map((f) => (
+                <button key={f.v} type="button" role="menuitemradio" aria-checked={effect === f.v} onClick={() => setEffect(f.v)} className="flex min-h-11 w-full items-center justify-between rounded-ctl px-3 text-left text-[15px] hover:bg-fg/10">
+                  {f.label}{effect === f.v && <Icon name="check" size={18} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
       <button type="button" className={tb} onClick={toggleFull} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} title={full ? "Salir de pantalla completa" : "Pantalla completa"}><Icon name={full ? "shrink" : "expand"} /></button>
       <ThemeToggle className="min-h-11! min-w-11! border-transparent bg-transparent!" />
     </>
@@ -334,37 +350,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   return (
     <div
       ref={root}
-      className={`reader-root fixed inset-0 bg-surface text-fg ${reduced && phase !== "in" ? "fade-in" : ""}`}
-      onMouseMove={(e) => { if (e.clientY < 72 && !barOn) setBarOn(true); }}
+      className={`reader-root fixed inset-0 flex flex-col bg-surface text-fg ${reduced && phase !== "in" ? "fade-in" : ""}`}
+      data-renders="0"
     >
-      {ready && pdf && (
-        <div ref={scroller} onScroll={onScroll} className="absolute inset-0 overflow-auto overscroll-contain">
-          <div className="relative mx-auto" style={{ height: total, width: innerW }}>
-            {Array.from({ length: Math.max(0, winTo - winFrom + 1) }, (_, i) => winFrom + i).map((n) => (
-              <div key={n} className="absolute" style={{ top: offs[n - 1], left: (innerW - W) / 2 }}>
-                <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {!ready && pdf && <div ref={scroller} className="absolute inset-0 grid place-items-center"><div className="skeleton h-48 w-36 rounded-card" aria-label="Cargando" /></div>}
-      {ready && !pdf && (
-        <BookMode
-          ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} reduced={reduced}
-          onPage={(n) => { setPage(n); setOffer(0); }}
-          onTap={() => setBarOn((v) => !v)}
-          onTurnStart={() => setBarOn(false)}
-          onExpired={onExpired}
-        />
-      )}
-
-      <header
-        ref={bar} role="toolbar" aria-label="Barra del lector"
-        data-hidden={!barVisible} inert={!barVisible}
-        onFocusCapture={() => setFocusIn(true)} onBlurCapture={() => setFocusIn(false)}
-        className="reader-bar glass absolute inset-x-0 top-0 z-30 py-1"
-      >
+      {/* The toolbar is always visible: a normal row above the page area (solid, so nothing blurs over a turning page). */}
+      <header role="toolbar" aria-label="Barra del lector" className="reader-bar relative z-30 shrink-0 border-b border-line bg-bg py-1">
         <div className="mx-auto flex max-w-[1400px] flex-nowrap items-center gap-1">
           <div className="flex min-w-0 flex-1 items-center gap-1">
             <button type="button" className={tb} onClick={onClose} aria-label="Volver a la ficha del libro" title="Volver a la ficha del libro"><Icon name="back" /></button>
@@ -373,7 +363,6 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
 
           <div className="flex shrink-0 items-center gap-0.5">
             <ModeSwitch value={mode} onChange={setMode} />
-            {!pdf && <button type="button" className={`${tb} hidden sm:inline-flex`} disabled={prevOff} onClick={() => turn(-1)} aria-label="Página anterior" title="Página anterior"><Icon name="back" /></button>}
             <form onSubmit={submitPage} className="relative ml-1 flex items-center gap-1.5 text-sm" noValidate>
               <label htmlFor="pagina" className="sr-only">Ir a la página</label>
               <input
@@ -385,10 +374,9 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
                 onKeyDown={(e) => { if (e.key === "Escape") { setEditing(null); setPageMsg(""); (e.currentTarget as HTMLInputElement).blur(); } }}
                 className="field tnum min-h-11 w-12! px-1! py-1! text-center sm:w-14!"
               />
-              <span className="tnum whitespace-nowrap text-glass-muted">/ {pageCount}</span>
+              <span className="tnum whitespace-nowrap text-muted">/ {pageCount}</span>
               <p id="pagina-msg" role="alert" className={`absolute right-0 top-full z-10 mt-1 w-max max-w-[16rem] rounded-ctl border border-danger bg-bg px-2.5 py-1.5 text-[13px] text-danger sm:left-0 sm:right-auto ${pageMsg ? "" : "hidden"}`}>{pageMsg}</p>
             </form>
-            {!pdf && <button type="button" className={`${tb} hidden sm:inline-flex`} disabled={nextOff} onClick={() => turn(1)} aria-label="Página siguiente" title="Página siguiente"><Icon name="next" /></button>}
 
             <div className="hidden items-center gap-0.5 sm:flex">
               <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
@@ -398,18 +386,40 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
           </div>
         </div>
         {menu && (
-          <div id="lector-menu" className="absolute right-2 top-full z-30 mt-1 flex flex-wrap items-center gap-0.5 rounded-card border border-line bg-bg p-1 shadow-[var(--shadow-float)] sm:hidden">
+          <div id="lector-menu" className="absolute right-2 top-full z-30 mt-1 flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-0.5 rounded-card border border-line bg-bg p-1 shadow-[var(--shadow-float)] sm:hidden">
             {secondary(true)}
           </div>
         )}
       </header>
 
-      {offer > 0 && ready && (
-        <div className="fade-in absolute inset-x-0 z-30 mx-auto flex w-[min(92vw,28rem)] flex-wrap items-center justify-center gap-2 rounded-card border border-line bg-bg p-3 shadow-[var(--shadow-float)]" style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-          <button className="btn btn-primary" onClick={() => goTo(offer)}>Continuar en la página {offer}</button>
-          <button className="btn" onClick={() => setOffer(0)}>Empezar desde el principio</button>
-        </div>
-      )}
+      <div ref={area} className="relative min-h-0 flex-1">
+        {ready && pdf && (
+          <div ref={scroller} onScroll={onScroll} className="absolute inset-0 overflow-auto overscroll-contain">
+            <div className="relative mx-auto" style={{ height: total, width: innerW }}>
+              {Array.from({ length: Math.max(0, winTo - winFrom + 1) }, (_, i) => winFrom + i).map((n) => (
+                <div key={n} className="absolute" style={{ top: offs[n - 1], left: (innerW - W) / 2 }}>
+                  <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {!ready && pdf && <div ref={scroller} className="absolute inset-0 grid place-items-center"><div className="skeleton h-48 w-36 rounded-card" aria-label="Cargando" /></div>}
+        {ready && !pdf && (
+          <BookMode
+            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect}
+            onPage={(n) => { setPage(n); setOffer(0); }}
+            onExpired={onExpired}
+          />
+        )}
+
+        {offer > 0 && ready && (
+          <div className="fade-in absolute inset-x-0 z-30 mx-auto flex w-[min(92vw,28rem)] flex-wrap items-center justify-center gap-2 rounded-card border border-line bg-bg p-3 shadow-[var(--shadow-float)]" style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+            <button className="btn btn-primary" onClick={() => goTo(offer)}>Continuar en la página {offer}</button>
+            <button className="btn" onClick={() => setOffer(0)}>Empezar desde el principio</button>
+          </div>
+        )}
+      </div>
 
       {phase !== "off" && <OpeningBook slug={slug} title={title} progress={loadFrac} out={phase === "out"} reduced={reduced} />}
     </div>

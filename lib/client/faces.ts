@@ -6,7 +6,11 @@ import { peekPage } from "./pages";
 
 const faces = new Map<string, HTMLCanvasElement>();
 const dpr = () => Math.min(window.devicePixelRatio || 1, 2);
-const size = (w: number, h: number) => [Math.max(1, Math.round(w * dpr())), Math.max(1, Math.round(h * dpr()))] as const;
+// Canvas size: device pixel ratio at most 2 and the longest side at most 2048 px.
+const size = (w: number, h: number) => {
+  const k = Math.min(dpr(), 2048 / Math.max(w, h, 1));
+  return [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))] as const;
+};
 const keyOf = (slug: string, n: number, cw: number, ch: number) => `${slug}:${n}:${cw}x${ch}`;
 
 /** The page's canvas at w x h CSS pixels, drawn now if it is not cached yet. null while the page is not decoded. */
@@ -35,11 +39,15 @@ export function getFace(slug: string, n: number, w: number, h: number): HTMLCanv
   return c;
 }
 
-/** Draw a face when the browser is idle (never during an animation frame). */
+let hold: () => boolean = () => false;
+/** The reader tells us when a page turn is running: background drawing then waits for it to end. */
+export function holdFaces(f: () => boolean) { hold = f; }
+
+/** Draw a face when the browser is idle (never during an animation frame, never while a page turns). */
 export function prepareFace(slug: string, n: number, w: number, h: number) {
-  const run = () => { getFace(slug, n, w, h); };
+  const run = () => { if (hold()) { setTimeout(run, 120); return; } getFace(slug, n, w, h); };
   const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
-  if (ric) ric(run, { timeout: 500 }); else setTimeout(run, 30);
+  if (ric) ric(run, { timeout: 150 }); else setTimeout(run, 30);
 }
 
 /** Drop this book's faces that are not wanted any more (other pages, or another size). */

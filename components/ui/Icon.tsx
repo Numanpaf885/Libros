@@ -16,6 +16,7 @@ const P = {
   link: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3A4 4 0 0011 18.7l1-1",
   continuous: "M7 4h10v6H7zM7 14h10v6H7z",
   single: "M7 3h10v18H7z",
+  pages: "M8 3h12v14H8zM4 7v14h12",
   book: "M5 5.5A1.5 1.5 0 016.5 4H19v14H6.5A1.5 1.5 0 005 19.5v-14zM5 19.5A1.5 1.5 0 006.5 21H19",
   lock: "M7 11V8a5 5 0 0110 0v3M6 11h12v9H6z",
   unlock: "M7 11V8a5 5 0 019.5-2M6 11h12v9H6z",
