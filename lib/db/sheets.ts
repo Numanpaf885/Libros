@@ -118,6 +118,22 @@ export const sheetsTable: Table = {
     }
     if (fresh.length) await this.appendMany(tab, fresh);
   },
+  async applyRows(tab, removeIds, add) {
+    if (!removeIds.length && !add.length) return;
+    const requests: sheets_v4.Schema$Request[] = [];
+    if (removeIds.length) {
+      const gone = new Set(removeIds);
+      const rows = await readAll(tab);
+      const gid = await gidOf(tab);
+      rows.map((r, i) => (gone.has(r[0]) ? i : -1)).filter((i) => i >= 0).sort((a, b) => b - a)
+        .forEach((i) => requests.push({ deleteDimension: { range: { sheetId: gid, dimension: "ROWS", startIndex: i + 1, endIndex: i + 2 } } }));
+    }
+    if (add.length) {
+      // stringValue is always literal text: a label like =IMPORTXML(...) is never evaluated as a formula
+      requests.push({ appendCells: { sheetId: await gidOf(tab), fields: "userEnteredValue", rows: add.map((r) => ({ values: r.map((v) => ({ userEnteredValue: { stringValue: v } })) })) } });
+    }
+    if (requests.length) await call(() => api().spreadsheets.batchUpdate({ spreadsheetId: sheetId(), requestBody: { requests } }));
+  },
   async deleteMatching(tab, match) {
     const rows = await readAll(tab);
     const idx = rows.map((r, i) => (match.every(([c, v]) => r[c] === v) ? i : -1)).filter((i) => i >= 0);

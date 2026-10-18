@@ -245,3 +245,7 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 
 /* a page that has been drawn stops shimmering (no repaint while it turns) */
 .page-face[data-ready="1"] { animation: none; background: #fff; }
+
+/* Bookmark ribbon: a small pennant in the top corner of a bookmarked page (both reading modes). */
+.bm-ribbon { position: absolute; top: 0; right: 14px; z-index: 5; width: 18px; height: 30px; pointer-events: none; background: var(--accent); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%); }
+.bm-ribbon-l { right: auto; left: 14px; }

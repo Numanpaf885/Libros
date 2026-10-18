@@ -17,6 +17,8 @@ interface Props {
   ratio: number;
   box: { w: number; h: number };
   effect: PageEffect;
+  /** pages that have a bookmark (a ribbon is drawn on them) */
+  marks?: ReadonlySet<number>;
   onPage: (n: number) => void;
   onExpired: () => void;
 }
@@ -38,7 +40,7 @@ const idle = (fn: () => void) => {
 };
 
 /** One page: its canvas (never an <img>), drawn before it is ever shown, or a shimmering skeleton. */
-function PageFace({ slug, n, w, h, version, failed }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean }) {
+function PageFace({ slug, n, w, h, version, failed, marked, side }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean; marked: boolean; side: "l" | "r" }) {
   const wrap = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -50,6 +52,7 @@ function PageFace({ slug, n, w, h, version, failed }: { slug: string; n: number;
   }, [slug, n, w, h, version]);
   return (
     <div ref={wrap} className="page-face page-skeleton absolute inset-0 overflow-hidden" data-page={n}>
+      {marked && <span className={`bm-ribbon ${side === "l" ? "bm-ribbon-l" : ""}`} data-testid="bookmark-ribbon" aria-hidden="true" />}
       {failed && <p className="absolute inset-0 grid place-items-center p-4 text-center text-sm text-muted">No se ha podido cargar esta página.</p>}
     </div>
   );
@@ -60,7 +63,7 @@ function Shade({ r, side, dark = 0.38 }: { r: (e: HTMLDivElement | null) => void
   return <div ref={r} data-shade className="pointer-events-none absolute inset-0" style={{ opacity: 0, background: `linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(0,0,0,${dark}), rgba(0,0,0,0) 55%)` }} />;
 }
 
-const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, onPage, onExpired }, handle) {
+const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, marks, onPage, onExpired }, handle) {
   const wide = box.w >= 1024 && box.w > box.h;
   const total = unitCount(pageCount, wide);
   const [unit, setUnit] = useState(() => clamp(unitOf(page, wide), 0, total - 1));
@@ -406,7 +409,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   useEffect(() => () => { cancelAnimationFrame(raf.current); cancelAnimationFrame(dragRaf.current); }, []);
 
   // ---- render: everything a turn needs is mounted BEFORE it starts (keyed by unit, rebuilt once after each turn) ----
-  const face = (n: number | null) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} />);
+  const face = (n: number | null) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} marked={!!marks?.has(n)} side={wide && n % 2 === 0 ? "l" : "r"} />);
   const slotCls = "absolute top-0 overflow-hidden bg-white outline outline-1 -outline-offset-1 outline-line";
   const pgs = (u: number) => pagesOfUnit(u, wide, pageCount);
   const [cl, cr] = pgs(unit);

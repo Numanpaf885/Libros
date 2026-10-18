@@ -1,10 +1,14 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Icon from "@/components/ui/Icon";
+import Sheet, { usePhone } from "@/components/ui/Sheet";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import { useToast } from "@/components/ui/Toaster";
+import { LIMIT, useBookmarks } from "@/lib/client/bookmarks";
 import { loadPage, Unauthorized } from "@/lib/client/pages";
 import { realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
 import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
+import BookmarksPanel from "./BookmarksPanel";
 import { flushBook, reportPage } from "@/lib/client/progress-sync";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
@@ -66,6 +70,10 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const [pageMsg, setPageMsg] = useState("");
   const [full, setFull] = useState(false);
   const [phase, setPhase] = useState<"in" | "out" | "off">("in"); // opening animation
+  const toast = useToast();
+  const phoneUi = usePhone(767);
+  const bm = useBookmarks(slug, pageCount);
+  const [bmOpen, setBmOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLDivElement>(null);
   const renders = useRef(0);
@@ -220,6 +228,22 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     if (pdf) scrollToPage(c);
   };
 
+  // ---- bookmarks: the toggle applies to the current page (the left page of a spread) ----
+  const bookmarked = bm.marks.has(page);
+  const toggleBookmark = () => {
+    if (!bm.ready) return;
+    const cur = bm.items.find((i) => i.page === page);
+    if (cur) {
+      bm.remove(cur.id);
+      toast("ok", "Marcador eliminado", { label: "Deshacer", onClick: () => bm.add(cur.page, cur.label) });
+      return;
+    }
+    if (bm.items.length >= LIMIT) { toast("error", `Has alcanzado el límite de ${LIMIT} marcadores en este libro.`); return; }
+    const id = bm.add(page);
+    if (id) toast("ok", "Marcador añadido", { label: "Deshacer", onClick: () => bm.remove(id) });
+  };
+  const jumpTo = (n: number) => { goTo(n); if (phoneUi) setBmOpen(false); };
+
   // first placement once geometry is known
   useLayoutEffect(() => {
     if (!ready || placed.current || !pdf) return;
@@ -265,6 +289,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.getAttribute("role") === "radio")) return;
       if (e.key === "ArrowRight" || (!pdf && e.key === "PageDown")) { e.preventDefault(); turn(1); }
       else if (e.key === "ArrowLeft" || (!pdf && e.key === "PageUp")) { e.preventDefault(); turn(-1); }
+      else if (e.key.toLowerCase() === "b" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleBookmark(); }
       else if (e.key === "Home") { e.preventDefault(); goTo(1); }
       else if (e.key === "End") { e.preventDefault(); goTo(pageCount); }
     };
@@ -381,6 +406,14 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
               <p id="pagina-msg" role="alert" className={`absolute right-0 top-full z-10 mt-1 w-max max-w-[16rem] rounded-ctl border border-danger bg-bg px-2.5 py-1.5 text-[13px] text-danger sm:left-0 sm:right-auto ${pageMsg ? "" : "hidden"}`}>{pageMsg}</p>
             </form>
 
+            <button
+              type="button" className={`${tb} ${bookmarked ? "text-accent" : ""}`} disabled={!bm.ready} onClick={toggleBookmark} aria-pressed={bookmarked}
+              aria-label={bookmarked ? "Quitar marcador" : "Añadir marcador"} title={`${bookmarked ? "Quitar marcador" : "Añadir marcador"} (B)`} data-testid="bookmark-toggle"
+            ><Icon name="bookmark" filled={bookmarked} /></button>
+            <button
+              type="button" className={`${tb} ${bmOpen ? "bg-fg/10!" : ""}`} onClick={() => setBmOpen((v) => !v)} aria-expanded={bmOpen} aria-label="Marcadores" title="Marcadores" data-testid="bookmarks-open"
+            ><Icon name="bookmarks" /></button>
+
             <div className="hidden items-center gap-0.5 sm:flex">
               <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
               {secondary(false)}
@@ -401,7 +434,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
             <div className="relative mx-auto" style={{ height: total, width: innerW }}>
               {Array.from({ length: Math.max(0, winTo - winFrom + 1) }, (_, i) => winFrom + i).map((n) => (
                 <div key={n} className="absolute" style={{ top: offs[n - 1], left: (innerW - W) / 2 }}>
-                  <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} />
+                  <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} marked={bm.marks.has(n)} />
                 </div>
               ))}
             </div>
@@ -410,10 +443,20 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
         {!ready && pdf && <div ref={scroller} className="absolute inset-0 grid place-items-center"><div className="skeleton h-48 w-36 rounded-card" aria-label="Cargando" /></div>}
         {ready && !pdf && (
           <BookMode
-            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect}
+            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect} marks={bm.marks}
             onPage={(n) => { setPage(n); setOffer(0); }}
             onExpired={onExpired}
           />
+        )}
+
+        {bmOpen && !phoneUi && (
+          <aside aria-label="Marcadores" className="fade-in absolute inset-y-0 right-0 z-20 flex w-80 max-w-full flex-col border-l border-line bg-bg shadow-[var(--shadow-float)]" data-testid="bookmarks-panel">
+            <div className="flex items-center justify-between border-b border-line px-4 py-2">
+              <h2 className="font-serif text-xl font-semibold">Marcadores</h2>
+              <button type="button" className={tb} onClick={() => setBmOpen(false)} aria-label="Cerrar marcadores"><Icon name="close" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} /></div>
+          </aside>
         )}
 
         {offer > 0 && ready && (
@@ -423,6 +466,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
           </div>
         )}
       </div>
+
+      <Sheet open={bmOpen && phoneUi} onClose={() => setBmOpen(false)} label="Marcadores">
+        <h2 className="mb-2 font-serif text-2xl font-semibold">Marcadores</h2>
+        <div className="max-h-[60vh] overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} /></div>
+      </Sheet>
 
       {phase !== "off" && <OpeningBook slug={slug} title={title} progress={loadFrac} out={phase === "out"} reduced={reduced} />}
     </div>

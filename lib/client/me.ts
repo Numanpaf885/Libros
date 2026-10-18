@@ -30,3 +30,9 @@ export function useMe(): State {
   useEffect(() => { if (state.status === "idle") void refreshMe(); }, []);
   return s;
 }
+
+/** Resolves with the signed-in user (asking the server once if nobody has yet). */
+export async function ensureMe(): Promise<Me | null> {
+  if (state.status === "ready") return state.user;
+  return refreshMe();
+}

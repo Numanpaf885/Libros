@@ -26,3 +26,14 @@ export function clientIp(req: Request): string {
   const xf = req.headers.get("x-forwarded-for");
   return (xf?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "unknown").trim();
 }
+
+/** Counts a request against `key` and says whether it is over `max` per `windowMs` (in memory, per server instance). */
+const hits = (globalThis as unknown as { __hits?: Map<string, number[]> });
+hits.__hits ??= new Map();
+export function overLimit(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (hits.__hits!.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  hits.__hits!.set(key, arr);
+  return arr.length > max;
+}

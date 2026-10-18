@@ -19,6 +19,11 @@ export interface Table {
   upsertMany(tab: string, keyCols: number[], rows: string[][]): Promise<void>;
   /** Delete every row where all [column, value] pairs match. */
   deleteMatching(tab: string, match: [number, string][]): Promise<number>;
+  /**
+   * Remove the rows whose column 0 is in `removeIds` and append `add`, in ONE write request (one read first when
+   * something has to be removed). Text is stored literally (never parsed as a formula).
+   */
+  applyRows(tab: string, removeIds: string[], add: string[][]): Promise<void>;
 }
 
 export const TABS = {
@@ -29,5 +34,6 @@ export const TABS = {
   user_books: ["user_id", "book_id", "source", "code_id", "granted_at"],
   progress: ["user_id", "book_id", "page", "updated_at"],
   passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
+  bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
 } as const;
 export type TabName = keyof typeof TABS;

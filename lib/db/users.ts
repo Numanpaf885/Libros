@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isMock, PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
-import { ALL_BOOKS, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord, type UserStatus } from "../types";
+import { ALL_BOOKS, type BookmarkRecord, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord, type UserStatus } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import type { Table } from "./table";
@@ -12,6 +12,9 @@ const table = (): Table => {
 };
 
 const TABS = ["users", "user_books", "progress", "passkeys"] as const;
+/** Bookmarks live in a tab that may not exist yet (it is added by `npm run setup-sheet`): everything below copes with that. */
+const BM_RETRY_MS = 5 * 60_000;
+export const BOOKMARK_GAP_MS = 2_000;
 
 // ---- row <-> object ----
 const num = (v: string | undefined, d = 0) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -29,6 +32,8 @@ const toUserBook = (r: string[]): UserBookRecord => ({ user_id: r[0], book_id: r
 const fromUserBook = (b: UserBookRecord): string[] => [b.user_id, b.book_id, b.source, b.code_id, b.granted_at];
 const toProgress = (r: string[]): ProgressRecord => ({ user_id: r[0], book_id: r[1], page: num(r[2]), updated_at: r[3] });
 const fromProgress = (p: ProgressRecord): string[] => [p.user_id, p.book_id, String(p.page), p.updated_at];
+const toBookmark = (r: string[]): BookmarkRecord => ({ id: r[0], user_id: r[1], book_id: r[2], page: num(r[3]), label: r[4] ?? "", created_at: r[5] ?? "" });
+const fromBookmark = (b: BookmarkRecord): string[] => [b.id, b.user_id, b.book_id, String(b.page), b.label, b.created_at];
 const toPasskey = (r: string[]): PasskeyRecord => ({
   id: r[0], user_id: r[1], credential_id: r[2], public_key: r[3], counter: num(r[4]), transports: r[5], label: r[6], created_at: r[7], last_used_at: r[8],
 });
@@ -41,7 +46,11 @@ interface Snap {
   userBooks: UserBookRecord[];
   progress: ProgressRecord[];
   passkeys: PasskeyRecord[];
+  bookmarks: BookmarkRecord[];
+  /** false while the bookmarks tab does not exist (bookmarks then stay on the reader's device) */
+  bookmarksOk: boolean;
 }
+interface BmQueue { remove: Set<string>; add: Map<string, BookmarkRecord>; /** when the oldest waiting change was made */ since: number }
 interface Store {
   snap: Snap | null;
   loading: Promise<Snap> | null;
@@ -50,23 +59,46 @@ interface Store {
   /** when each user+book was last written to the sheet */
   written: Map<string, number>;
   draining: Promise<void> | null;
+  /** bookmark changes not yet written, per user, and when each user was last written */
+  bmPending: Map<string, BmQueue>;
+  bmWritten: Map<string, number>;
+  bmDraining: Promise<void> | null;
+  /** don't ask for the bookmarks tab again before this time (it was missing) */
+  bmMissingUntil: number;
+  bmWarned: boolean;
 }
 const g = globalThis as unknown as { __usersStore?: Store };
-const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null });
+const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false });
 const pkey = (userId: string, bookId: string) => `${userId}:${bookId}`;
 
 async function snapshot(): Promise<Snap> {
   if (store.snap && Date.now() - store.snap.at < USERS_CACHE_MS) return store.snap;
   store.loading ??= (async () => {
     try {
-      const d = await table().listMany([...TABS]);
+      // One batchGet. If the bookmarks tab is not there (Google answers 400), read the four old tabs as before and
+      // remember not to ask again for a few minutes: nothing else may ever break because of the new tab.
+      const wantBm = Date.now() >= store.bmMissingUntil;
+      let d: Record<string, string[][]>;
+      let bookmarksOk = wantBm;
+      try {
+        d = await table().listMany(wantBm ? [...TABS, "bookmarks"] : [...TABS]);
+      } catch (e) {
+        if (!wantBm) throw e;
+        store.bmMissingUntil = Date.now() + BM_RETRY_MS;
+        bookmarksOk = false;
+        if (!store.bmWarned) { store.bmWarned = true; console.warn("[bookmarks] the `bookmarks` tab is missing: run `npm run setup-sheet`. Bookmarks stay on the reader's device until then."); }
+        d = await table().listMany([...TABS]);
+      }
       const snap: Snap = {
         at: Date.now(),
         users: d.users.filter((r) => r[0]).map(toUser),
         userBooks: d.user_books.filter((r) => r[0] && r[1]).map(toUserBook),
         progress: d.progress.filter((r) => r[0] && r[1]).map(toProgress),
         passkeys: d.passkeys.filter((r) => r[0]).map(toPasskey),
+        bookmarks: bookmarksOk ? (d.bookmarks ?? []).filter((r) => r[0] && r[1]).map(toBookmark) : [],
+        bookmarksOk,
       };
+      for (const [uid, q] of store.bmPending) applyQueueToList(snap, uid, q);
       // Progress that is still waiting to be written is newer than the sheet.
       for (const p of store.pending.values()) upsertLocalProgress(snap, p);
       store.snap = snap;
@@ -76,6 +108,10 @@ async function snapshot(): Promise<Snap> {
     }
   })();
   return store.loading;
+}
+/** Re-apply bookmark changes that are still waiting to be written on top of freshly read rows. */
+function applyQueueToList(s: Snap, userId: string, q: BmQueue) {
+  s.bookmarks = s.bookmarks.filter((b) => !(b.user_id === userId && (q.remove.has(b.id) || q.add.has(b.id)))).concat([...q.add.values()]);
 }
 function upsertLocalProgress(s: Snap, p: ProgressRecord) {
   const i = s.progress.findIndex((x) => x.user_id === p.user_id && x.book_id === p.book_id);
@@ -182,11 +218,17 @@ export async function addCodeGrant(userId: string, bookId: string, codeId: strin
   s.userBooks = s.userBooks.filter((b) => !(b.user_id === userId && b.book_id === bookId && b.source === "code")).concat(grant);
 }
 export async function deleteUserCascade(id: string): Promise<void> {
+  // drop queued bookmark writes first and let an in-flight batch land, so nothing re-appears after the delete
+  store.bmPending.delete(id);
+  await store.bmDraining?.catch(() => {});
   await table().deleteMatching("users", [[0, id]]);
   await table().deleteMatching("user_books", [[0, id]]);
   await table().deleteMatching("progress", [[0, id]]);
   await table().deleteMatching("passkeys", [[1, id]]);
   const s = await snapshot();
+  if (s.bookmarksOk) await table().deleteMatching("bookmarks", [[1, id]]).catch((e) => console.warn("[bookmarks] cleanup failed", e));
+  s.bookmarks = s.bookmarks.filter((b) => b.user_id !== id);
+  store.bmPending.delete(id);
   s.users = s.users.filter((u) => u.id !== id);
   s.userBooks = s.userBooks.filter((b) => b.user_id !== id);
   s.progress = s.progress.filter((p) => p.user_id !== id);
@@ -292,3 +334,116 @@ function retryLater() {
   retryTimer.unref?.();
 }
 export const pendingProgressCount = () => store.pending.size;
+
+// ---- bookmarks ----
+export const BOOKMARK_LIMIT = 100;
+/** Whether the tab exists (false: the reader keeps its bookmarks on the device). */
+export async function bookmarksAvailable(): Promise<boolean> {
+  return (await snapshot()).bookmarksOk;
+}
+export async function bookmarksOf(userId: string, bookId: string): Promise<BookmarkRecord[]> {
+  return (await snapshot()).bookmarks.filter((b) => b.user_id === userId && b.book_id === bookId).sort((a, b) => a.page - b.page).map((b) => ({ ...b }));
+}
+export type BookmarkOp =
+  | { op: "add"; id: string; page: number; label: string }
+  | { op: "remove"; id: string }
+  | { op: "rename"; id: string; label: string };
+const queueOf = (userId: string): BmQueue => {
+  let q = store.bmPending.get(userId);
+  if (!q) store.bmPending.set(userId, (q = { remove: new Set<string>(), add: new Map<string, BookmarkRecord>(), since: Date.now() }));
+  return q;
+};
+/**
+ * Apply changes to the cache at once and queue the sheet write. Adding a page that is already bookmarked is a no-op
+ * (that is what makes merging a device's bookmarks safe). Returns false when the 100-per-book limit would be passed.
+ */
+export async function applyBookmarkOps(userId: string, bookId: string, ops: BookmarkOp[], pageCount: number): Promise<boolean> {
+  const s = await snapshot();
+  const q = queueOf(userId);
+  for (const o of ops) {
+    const mine = s.bookmarks.filter((b) => b.user_id === userId && b.book_id === bookId);
+    if (o.op === "add") {
+      if (o.page < 1 || o.page > pageCount) continue;
+      if (mine.some((b) => b.id === o.id || b.page === o.page)) continue;
+      if (mine.length >= BOOKMARK_LIMIT) return false;
+      const rec: BookmarkRecord = { id: o.id, user_id: userId, book_id: bookId, page: o.page, label: o.label || `Página ${o.page}`, created_at: new Date().toISOString() };
+      s.bookmarks.push(rec);
+      q.add.set(rec.id, rec);
+    } else if (o.op === "remove") {
+      const b = mine.find((x) => x.id === o.id);
+      if (!b) continue;
+      s.bookmarks = s.bookmarks.filter((x) => x !== b);
+      if (!q.add.delete(b.id)) q.remove.add(b.id); // never written yet: nothing to delete in the sheet
+    } else {
+      const i = s.bookmarks.findIndex((x) => x.id === o.id && x.user_id === userId && x.book_id === bookId);
+      if (i < 0) continue;
+      const next = { ...s.bookmarks[i], label: o.label || `Página ${s.bookmarks[i].page}` };
+      s.bookmarks[i] = next;
+      if (q.add.has(next.id)) q.add.set(next.id, next);
+      else { q.remove.add(next.id); q.add.set(next.id, next); } // a changed row is replaced
+    }
+  }
+  if (!q.add.size && !q.remove.size) store.bmPending.delete(userId);
+  return true;
+}
+export async function deleteBookmarksForBook(bookId: string): Promise<void> {
+  for (const [u, q] of store.bmPending) { for (const [k, r] of q.add) if (r.book_id === bookId) q.add.delete(k); if (!q.add.size && !q.remove.size) store.bmPending.delete(u); }
+  await store.bmDraining?.catch(() => {});
+  const s = await snapshot();
+  if (!s.bookmarksOk || !s.bookmarks.some((b) => b.book_id === bookId)) return;
+  await table().deleteMatching("bookmarks", [[2, bookId]]).catch((e) => console.warn("[bookmarks] cleanup failed", e));
+  s.bookmarks = s.bookmarks.filter((b) => b.book_id !== bookId);
+}
+/**
+ * Single-flight writer for bookmarks: all users that are due go out in ONE request, and a user is written at most
+ * once every BOOKMARK_GAP_MS, so a burst of changes becomes one write. Failures (429 included, after the retries
+ * in the Sheets client) put the changes back and try again later; the cache already holds the latest state.
+ */
+export function drainBookmarks(): Promise<void> {
+  if (store.bmDraining) return store.bmDraining;
+  if (!store.bmPending.size) return Promise.resolve();
+  const run: Promise<void> = (async () => {
+    while (store.bmPending.size) {
+      const now = Date.now();
+      // a user is written once their oldest waiting change is BOOKMARK_GAP_MS old (so a burst becomes one write)
+      const readyAt = (u: string) => Math.max(store.bmPending.get(u)!.since, store.bmWritten.get(u) ?? 0) + BOOKMARK_GAP_MS;
+      const due = [...store.bmPending.keys()].filter((u) => now >= readyAt(u));
+      if (!due.length) {
+        const next = Math.min(...[...store.bmPending.keys()].map(readyAt));
+        await new Promise((r) => setTimeout(r, Math.max(50, next - now)));
+        continue;
+      }
+      const taken = new Map<string, BmQueue>();
+      for (const u of due) { taken.set(u, store.bmPending.get(u)!); store.bmPending.delete(u); }
+      const remove = [...taken.values()].flatMap((q) => [...q.remove]);
+      const add = [...taken.values()].flatMap((q) => [...q.add.values()].map(fromBookmark));
+      const snap = store.snap;
+      try {
+        if (snap && !snap.bookmarksOk) throw Object.assign(new Error("bookmarks tab missing"), { code: 400 });
+        await table().applyRows("bookmarks", remove, add);
+      } catch (e) {
+        // put the changes back (anything newer queued meanwhile wins) and try again later
+        for (const [u, q] of taken) {
+          const cur = store.bmPending.get(u);
+          if (!cur) { store.bmPending.set(u, { ...q, since: Date.now() }); continue; }
+          for (const id of q.remove) if (!cur.add.has(id)) cur.remove.add(id);
+          for (const [id, rec] of q.add) if (!cur.add.has(id) && !cur.remove.has(id)) cur.add.set(id, rec);
+        }
+        console.error("bookmark write failed, will retry", (e as Error).message);
+        retryBookmarksLater();
+        return;
+      }
+      const t = Date.now();
+      for (const u of taken.keys()) store.bmWritten.set(u, t);
+    }
+  })();
+  store.bmDraining = run;
+  void run.finally(() => { if (store.bmDraining === run) store.bmDraining = null; });
+  return run;
+}
+let bmRetry: ReturnType<typeof setTimeout> | null = null;
+function retryBookmarksLater() {
+  if (bmRetry) return;
+  bmRetry = setTimeout(() => { bmRetry = null; void drainBookmarks(); }, 30_000);
+  bmRetry.unref?.();
+}

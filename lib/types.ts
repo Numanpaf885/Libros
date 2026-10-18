@@ -89,3 +89,5 @@ export interface PasskeyRecord {
 }
 /** book_id used in user_books for "Todos los libros". */
 export const ALL_BOOKS = "*";
+
+export interface BookmarkRecord { id: string; user_id: string; book_id: string; page: number; label: string; created_at: string }

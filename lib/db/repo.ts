@@ -4,6 +4,7 @@ import { assertSafeConfig } from "../safety";
 import type { AccessCode, AdminUser, Book, BookStatus } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
+import { deleteBookmarksForBook } from "./users";
 import type { Table } from "./table";
 
 const table = (): Table => {
@@ -68,6 +69,8 @@ export async function saveBook(b: Book) {
 export async function deleteBookRow(id: string) {
   const n = await table().deleteWhere("books", 0, id);
   bust("books");
+  // bookmarks of a deleted book go with it; this must never make the deletion fail
+  await deleteBookmarksForBook(id).catch(() => {});
   return n;
 }
 

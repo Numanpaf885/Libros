@@ -26,12 +26,16 @@ const P = {
   key: "M10 12a4 4 0 11-8 0 4 4 0 018 0zM10 12h11M18 12v3M15 12v2",
   device: "M4 6h16v11H4zM2 20h20",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  bookmark: "M7 4h10v16l-5-4-5 4z",
+  bookmarks: "M9 3h9v14l-4.5-3.5L9 17zM5 7v14l4.5-3.5",
+  edit: "M5 19l1-4 9.5-9.5 3 3L9 18zM13.5 7.5l3 3",
+  trash: "M5 7h14M10 4h4M7 7l1 13h8l1-13M10 11v5M14 11v5",
   more: "M4.5 12a1 1 0 102 0 1 1 0 10-2 0M11 12a1 1 0 102 0 1 1 0 10-2 0M17.5 12a1 1 0 102 0 1 1 0 10-2 0",
 } as const;
 export type IconName = keyof typeof P;
-export default function Icon({ name, size = 20, className = "" }: { name: IconName; size?: number; className?: string }) {
+export default function Icon({ name, size = 20, className = "", filled = false }: { name: IconName; size?: number; className?: string; filled?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
       <path d={P[name]} />
     </svg>
   );

@@ -1,5 +1,5 @@
 // Usage: npm run setup-sheet
-// Creates any missing tabs (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`) and any missing header names.
+// Creates any missing tabs (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`) and any missing header names.
 // It never reorders existing columns and never touches data rows: missing headers (for example
 // author, category and year on an older `books` tab) are only ever appended at the END of row 1.
 // Reads GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SHEET_ID from .env.local / the environment.
@@ -14,6 +14,8 @@ const TABS: Record<string, string[]> = {
   user_books: ["user_id", "book_id", "source", "code_id", "granted_at"],
   progress: ["user_id", "book_id", "page", "updated_at"],
   passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
+  // Bookmarks ("Marcadores")
+  bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
 };
 
 function need(name: string): string {
