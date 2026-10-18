@@ -8,7 +8,11 @@ function subscribe(cb: () => void) {
   mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   return () => mo.disconnect();
 }
-const apply = (t: "light" | "dark") => {
+const apply = (t: "light" | "dark", smooth = false) => {
+  if (smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.documentElement.classList.add("theme-anim");
+    setTimeout(() => document.documentElement.classList.remove("theme-anim"), 400);
+  }
   document.documentElement.dataset.theme = t;
   document.documentElement.style.colorScheme = t;
 };
@@ -37,11 +41,11 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
   return (
     <button
       type="button"
-      className={`btn btn-icon ${className}`}
+      className={`btn btn-icon min-h-11 min-w-11 ${className}`}
       aria-label={next === "dark" ? "Cambiar a tema oscuro" : "Cambiar a tema claro"}
       title={next === "dark" ? "Tema oscuro" : "Tema claro"}
       onClick={() => {
-        apply(next);
+        apply(next, true);
         try { localStorage.setItem("theme", next); } catch { /* choice just won't persist */ }
       }}
     >

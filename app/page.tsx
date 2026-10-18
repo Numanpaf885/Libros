@@ -3,9 +3,11 @@ import Link from "next/link";
 import CatalogGrid from "@/components/home/CatalogGrid";
 import ContinueReading from "@/components/home/ContinueReading";
 import Cover from "@/components/home/Cover";
+import LargeTitle from "@/components/home/LargeTitle";
 import Faq from "@/components/home/Faq";
 import HowItWorks from "@/components/home/HowItWorks";
 import { meta, type CatalogBook } from "@/components/home/types";
+import { Logo } from "@/components/brand/Logo";
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeader";
 import Icon from "@/components/ui/Icon";
@@ -32,15 +34,16 @@ export default async function Home() {
 
   return (
     <>
-      <SiteHeader siteName={SITE_NAME} />
+      <SiteHeader siteName={SITE_NAME} largeTitle />
       <main className="flex-1">
+        <LargeTitle title="Libros" intro="Los libros del curso de Aviónica (TMC0). Elige uno e introduce tu código para leerlo." />
         {featured ? (
           <section aria-labelledby="destacado" className="border-b border-line bg-surface">
             <div className="mx-auto grid w-full max-w-[1200px] items-center gap-8 px-4 py-12 sm:px-6 md:grid-cols-[minmax(0,320px)_1fr] md:gap-16 md:py-16">
               <Cover slug={featured.slug} title={featured.title} className="mx-auto w-full max-w-[280px] md:max-w-none" eager />
               <div className="max-w-xl">
                 {meta(featured) && <p className="text-[15px] text-muted">{meta(featured)}</p>}
-                <h1 id="destacado" className="mt-1 text-4xl md:text-5xl">{featured.title}</h1>
+                <h2 id="destacado" className="mt-1 text-4xl md:text-5xl">{featured.title}</h2>
                 {featured.author && <p className="mt-2 text-lg text-muted">de {featured.author}</p>}
                 {featured.description && <p className="mt-5 line-clamp-4 text-base">{featured.description}</p>}
                 <p className="tnum mt-4 text-sm text-muted">{featured.pageCount} páginas</p>
@@ -54,8 +57,8 @@ export default async function Home() {
         ) : (
           <section id="catalogo" className="border-b border-line bg-surface">
             <div className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6">
-              <Icon name="book" size={32} className="text-muted" />
-              <h1 className="mt-4 text-4xl">Todavía no hay libros</h1>
+              <Logo size={44} className="text-accent" />
+              <h2 className="mt-4 text-4xl">Todavía no hay libros</h2>
               <p className="mt-2 max-w-md text-muted">Cuando se publique el primero aparecerá aquí, y podrás abrirlo con tu código.</p>
             </div>
           </section>

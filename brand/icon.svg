@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Libros">
+  <title>Libros</title>
+  <defs>
+    <clipPath id="horizonte-i-in"><circle cx="32" cy="32" r="22.6"/></clipPath>
+    <mask id="horizonte-i-m" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M32 39 V60" stroke="#000" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M12.5 48.5 Q22.5 42 32 47.5 Q41.5 42 51.5 48.5" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <circle cx="32" cy="32" r="27.5" fill="none" stroke="currentColor" stroke-width="4"/>
+  <g clip-path="url(#horizonte-i-in)">
+    <path mask="url(#horizonte-i-m)" fill="currentColor"
+      d="M4 41 Q18 30 32 39 Q46 30 60 41 L60 64 L4 64 Z"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 24 H26.5 V28"/>
+    <path d="M49 24 H37.5 V28"/>
+  </g>
+  <circle cx="32" cy="24" r="3" fill="currentColor"/>
+</svg>

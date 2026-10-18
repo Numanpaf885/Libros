@@ -12,6 +12,13 @@
   --accent-fg: #ffffff;
   --danger: #b3261e;
   --ok: #1f7a3a;
+  --muted-glass: #45453f; /* secondary text on the translucent bars: AA even over a dark cover or page */
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-solid: #ffffff;
+  --glass-line: rgba(0, 0, 0, 0.12);
+  --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --spring: linear(0, 0.0527, 0.1801, 0.3433, 0.5136, 0.6718, 0.8066, 0.913, 0.9904, 1.0416, 1.0706, 1.0825, 1.0821, 1.0737, 1.0611, 1.0468, 1.033, 1.0208, 1.0109, 1.0034, 0.9982, 0.995, 0.9934, 0.993, 0.9935, 0.9944, 0.9956, 0.9967, 0.9978, 0.9988, 0.9995, 1, 1.0003, 1.0005, 1.0006, 1.0006, 1);
+  --spring-press: linear(0, 0.0843, 0.2682, 0.4765, 0.666, 0.8166, 0.9238, 0.9919, 1.0289, 1.044, 1.0453, 1.039, 1.0298, 1.0204, 1.0123, 1.0062, 1.002, 0.9995, 0.9983, 0.9979, 0.998, 0.9984, 0.9988, 0.9992, 1);
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -25,13 +32,20 @@
   --accent-fg: #111214;
   --danger: #f28b82;
   --ok: #7cc38d;
+  --muted-glass: #d4d4d4;
+  --glass: rgba(17, 18, 20, 0.72);
+  --glass-solid: #111214;
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
   color-scheme: dark;
 }
 /* No JavaScript: follow the system setting */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #111214; --surface: #1a1b1e; --line: #2a2c30; --line-strong: #6f727a; --fg: #ececec; --muted: #a1a1a1;
-    --accent: #8db4e2; --accent-fg: #111214; --danger: #f28b82; --ok: #7cc38d; color-scheme: dark;
+    --accent: #8db4e2; --accent-fg: #111214; --danger: #f28b82; --ok: #7cc38d;
+    --muted-glass: #d4d4d4; --glass: rgba(17, 18, 20, 0.72); --glass-solid: #111214; --glass-line: rgba(255, 255, 255, 0.14);
+    --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4); color-scheme: dark;
   }
 }
 
@@ -42,18 +56,21 @@
   --color-line-strong: var(--line-strong);
   --color-fg: var(--fg);
   --color-muted: var(--muted);
+  --color-glass-muted: var(--muted-glass);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
-  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-inter), Inter, system-ui, sans-serif;
   --font-serif: var(--font-literata), Literata, Georgia, serif;
-  --radius-ctl: 5px;
-  --radius-card: 6px;
+  --radius-ctl: 10px;
+  --radius-card: 14px;
+  --radius-sheet: 16px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-html { background: var(--bg); }
+html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+* { -webkit-tap-highlight-color: transparent; }
 body {
   background: var(--bg);
   color: var(--fg);
@@ -61,6 +78,8 @@ body {
   font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 @layer base {
   h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; text-wrap: balance; }
@@ -86,8 +105,10 @@ input, textarea { caret-color: var(--accent); }
 @layer components {
   .btn {
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-ctl border border-line-strong bg-bg px-4 py-2 text-sm font-medium text-fg;
-    transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out);
+    transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 380ms var(--spring-press);
+    touch-action: manipulation;
   }
+  .btn:active:not(:disabled), .press:active { transform: scale(0.97); transition-duration: 90ms; }
   .btn:hover:not(:disabled) { background: var(--surface); border-color: var(--fg); }
   .btn:disabled { @apply cursor-not-allowed opacity-50; }
   .btn-primary { @apply border-accent bg-accent text-accent-fg; }
@@ -103,6 +124,7 @@ input, textarea { caret-color: var(--accent); }
   .field:hover { border-color: var(--fg); }
   .field:focus { border-color: var(--accent); }
   .card { @apply rounded-card border border-line bg-bg; }
+  .press { transition: transform 380ms var(--spring-press); touch-action: manipulation; }
   .panel { @apply rounded-card border border-line bg-surface; }
   .chip { @apply inline-flex items-center rounded-[4px] border px-2 py-0.5 text-xs font-medium; }
   .chip-ok { @apply border-ok text-ok; }
@@ -124,7 +146,104 @@ input, textarea { caret-color: var(--accent); }
 .reader-root canvas { -webkit-user-drag: none; }
 @media print { html, body { display: none !important; } }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
-  .skeleton { animation: none; }
+
+/* ---- Translucent bars (site header, reader toolbar) ---- */
+.glass {
+  background: var(--glass-solid); /* fallback: no backdrop-filter */
+  border-bottom: 1px solid var(--glass-line);
 }
+@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+}
+
+/* ---- Motion ---- */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 520ms var(--spring) both; animation-delay: calc(min(var(--i, 0), 14) * 35ms); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-140%) scale(0.96); } to { opacity: 1; transform: none; } }
+.toast-in { animation: toast-in 600ms var(--spring) both; }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+.sheet-panel { animation: sheet-in 520ms var(--spring) both; }
+.sheet-backdrop { animation: backdrop-in 240ms ease-out both; }
+.sheet-closing .sheet-panel { transform: translateY(100%); transition: transform 240ms cubic-bezier(0.4, 0, 1, 1); animation: none; }
+.sheet-closing .sheet-backdrop { opacity: 0; transition: opacity 240ms ease-out; animation: none; }
+
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.page-skeleton {
+  background-color: var(--surface);
+  background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fg) 7%, transparent) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* smooth theme change (class set for a moment by the theme toggle) */
+html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
+  transition: background-color 320ms ease, color 320ms ease, border-color 320ms ease, fill 320ms ease, stroke 320ms ease !important;
+}
+
+/* large title -> header (home). --lt goes 0..1 with the scroll */
+.large-title { opacity: calc(1 - var(--lt, 0)); transform: scale(calc(1 - 0.1 * var(--lt, 0))); transform-origin: left top; will-change: opacity, transform; }
+.has-large-title .lockup-title { opacity: var(--lt, 0); transform: translateY(calc((1 - var(--lt, 0)) * 6px)); }
+
+/* opening-the-book animation */
+.logo-ground { transform-origin: 32px 42px; transform: rotate(calc((1 - var(--lp, 1)) * -10deg)); }
+.opening-scene { perspective: 900px; }
+.open-book { position: relative; width: 132px; height: 176px; transform-style: preserve-3d; transform: rotateY(-14deg) rotateX(4deg); }
+.open-book .inside { position: absolute; inset: 0; border-radius: 3px 8px 8px 3px; background: #fff; border: 1px solid var(--line); overflow: hidden; }
+.open-book .inside i { display: block; height: 3px; margin: 14px 16px 0; border-radius: 2px; background: var(--line); }
+.open-book .inside i:nth-child(3n) { width: 60%; }
+.open-book .cover { position: absolute; inset: 0; transform-origin: left center; transform-style: preserve-3d; animation: cover-open 1.45s cubic-bezier(0.55, 0, 0.2, 1) 0.1s both; }
+.open-book .cover > * { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 3px 8px 8px 3px; overflow: hidden; }
+.open-book .cover .back { transform: rotateY(180deg); background: var(--surface); border: 1px solid var(--line); }
+.open-book .cover .front { background: var(--accent); }
+.open-book .cover .front img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+@keyframes cover-open { 0% { transform: rotateY(0deg); } 18% { transform: rotateY(-5deg) translateZ(6px); } 100% { transform: rotateY(-158deg); } }
+.opening-out { animation: opening-out 380ms ease-out both; }
+@keyframes opening-out { to { opacity: 0; } }
+.opening-bar { height: 2px; width: 168px; border-radius: 1px; background: var(--line); overflow: hidden; }
+.opening-bar > i { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
+
+/* View Transitions: cover grows from the catalogue into the book page */
+::view-transition-group(.morph) { animation-duration: 520ms; animation-timing-function: cubic-bezier(0.2, 0.9, 0.25, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+
+/* Reader */
+.reader-root { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+.reader-bar { transition: transform 360ms var(--spring), opacity 220ms ease; padding-top: env(safe-area-inset-top); padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+.reader-bar[data-hidden="true"] { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+.seg { position: relative; display: inline-flex; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.seg button { position: relative; z-index: 1; min-height: 40px; min-width: 52px; padding: 0 12px; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--muted); transition: color 200ms ease, transform 380ms var(--spring-press); touch-action: manipulation; }
+.seg button:active { transform: scale(0.97); }
+.seg button[aria-checked="true"] { color: var(--fg); }
+.seg .thumb { position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 7px; background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22); transition: transform 420ms var(--spring); }
+.seg[data-value="pdf"] .thumb { transform: translateX(100%); }
+.book-leaf { will-change: transform, opacity; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.book-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 44px; }
+  .btn-icon { min-width: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+  .btn, .press, .seg button, .seg .thumb, .reader-bar { transition-property: background-color, border-color, color, opacity !important; transition-duration: 150ms !important; }
+  .btn:active:not(:disabled), .press:active, .seg button:active { transform: none; }
+  .rise, .toast-in, .sheet-panel, .sheet-backdrop { animation: fade-in 200ms ease-out both !important; animation-delay: 0s !important; }
+  .sheet-closing .sheet-panel { transform: none; opacity: 0; transition: opacity 150ms ease; }
+  .skeleton, .page-skeleton { animation: none; }
+  .reader-bar[data-hidden="true"] { transform: none; }
+  .large-title { transform: none; }
+  .logo-ground { transform: none; }
+  .opening-out { animation-duration: 300ms; }
+  ::view-transition-group(*) { animation-duration: 0.01ms !important; }
+  ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 200ms !important; }
+}
+
+/* a page that has been drawn stops shimmering (no repaint while it turns) */
+.page-face[data-ready="1"] { animation: none; background: #fff; }

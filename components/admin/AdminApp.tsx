@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Logo } from "@/components/brand/Logo";
 import Icon from "@/components/ui/Icon";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { useToast } from "@/components/ui/Toaster";
@@ -330,7 +331,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       {books === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-28 rounded-card" /></div>
       ) : books.length === 0 ? (
-        <div className="card flex flex-col items-center gap-2 px-6 py-12 text-center"><Icon name="book" size={32} className="text-accent" /><h2 className="text-3xl">Todavía no hay libros</h2><p className="text-muted">Sube tu primer PDF arriba para empezar.</p></div>
+        <div className="card flex flex-col items-center gap-2 px-6 py-12 text-center"><Logo size={40} className="text-accent" /><h2 className="text-3xl">Todavía no hay libros</h2><p className="text-muted">Sube tu primer PDF arriba para empezar.</p></div>
       ) : (
         <section aria-label="Libros">
           <div role="table" aria-label="Libros" className="md:card md:overflow-hidden">

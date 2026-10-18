@@ -6,6 +6,7 @@ import { meta as metaLine } from "@/components/home/types";
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeader";
 import Icon from "@/components/ui/Icon";
+import Sheet, { usePhone } from "@/components/ui/Sheet";
 import Viewer from "@/components/reader/Viewer";
 
 export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number }
@@ -47,6 +48,8 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const [code, setCode] = useState("");
   const [reading, setReading] = useState<null | { start: number; offer: number }>(null);
   const [saved, setSaved] = useState(0);
+  const [sheet, setSheet] = useState(false);
+  const phone = usePhone(); // phones: the code is entered in a bottom sheet
 
   const open = useCallback((start: number | null) => {
     const sp = savedPage(slug, book.pageCount);
@@ -95,13 +98,47 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
     return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} onClose={close} onExpired={expired} />;
   }
 
+  const codeForm = (
+    <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setBusy(true); setError("");
+                    const h = readHash();
+                    tryUnlock(slug, code).then((o) => {
+                      if ("ok" in o) { setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount)); open(h.page); }
+                      else setError(o.error);
+                      setBusy(false);
+                    }).catch(() => { setError("Algo ha salido mal. Inténtalo de nuevo."); setBusy(false); });
+                  }}
+                  className={phone ? "space-y-4" : "panel max-w-md space-y-4 p-5"}
+                  noValidate
+                >
+                  <div>
+                    <h2 className="text-xl">Introduce tu código</h2>
+                    <p className="hint mt-1">Escríbelo una vez y podrás leer el libro completo.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="code" className="label">Código de acceso</label>
+                    <input
+                      id="code" name="code" required maxLength={32} autoComplete="off" autoCapitalize="characters" spellCheck={false}
+                      value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+                      aria-invalid={!!error} aria-describedby={error ? "code-error" : undefined}
+                      className="field font-mono text-lg uppercase tracking-[0.2em]"
+                    />
+                    {error && <p id="code-error" role="alert" className="err mt-2">{error}</p>}
+                  </div>
+                  <button disabled={busy || !code.trim()} className="btn btn-primary min-h-11 w-full">{busy ? "Comprobando…" : "Abrir libro"}</button>
+                  <p className="hint">{contact}</p>
+                </form>
+  );
+
   return (
     <>
       <SiteHeader siteName={siteName} />
       <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-8 sm:px-6 md:py-12">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-fg"><Icon name="back" size={16} />Catálogo</Link>
         <div className="mt-6 grid items-start gap-8 md:grid-cols-[minmax(0,300px)_1fr] md:gap-16">
-          <Cover slug={slug} title={book.title} className="mx-auto w-full max-w-[260px] md:sticky md:top-24 md:max-w-none" eager />
+          <Cover slug={slug} title={book.title} className="mx-auto w-full max-w-[260px] md:sticky md:top-24 md:max-w-none" eager transition />
           <div className="max-w-2xl">
             {metaLine(book) && <p className="text-[15px] text-muted">{metaLine(book)}</p>}
             <h1 className="mt-1 text-4xl md:text-5xl">{book.title}</h1>
@@ -125,37 +162,19 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                   <span className="inline-flex items-center gap-1.5 text-sm text-ok"><Icon name="unlock" size={16} />Desbloqueado</span>
                 </div>
               ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setBusy(true); setError("");
-                    const h = readHash();
-                    tryUnlock(slug, code).then((o) => {
-                      if ("ok" in o) { setUnlocked(true); setSaved(savedPage(slug, book.pageCount)); open(h.page); }
-                      else setError(o.error);
-                      setBusy(false);
-                    }).catch(() => { setError("Algo ha salido mal. Inténtalo de nuevo."); setBusy(false); });
-                  }}
-                  className="panel max-w-md space-y-4 p-5"
-                  noValidate
-                >
-                  <div>
-                    <h2 className="text-xl">Introduce tu código</h2>
-                    <p className="hint mt-1">Escríbelo una vez y podrás leer el libro completo.</p>
-                  </div>
-                  <div>
-                    <label htmlFor="code" className="label">Código de acceso</label>
-                    <input
-                      id="code" name="code" required maxLength={32} autoComplete="off" autoCapitalize="characters" spellCheck={false}
-                      value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
-                      aria-invalid={!!error} aria-describedby={error ? "code-error" : undefined}
-                      className="field font-mono text-lg uppercase tracking-[0.2em]"
-                    />
-                    {error && <p id="code-error" role="alert" className="err mt-2">{error}</p>}
-                  </div>
-                  <button disabled={busy || !code.trim()} className="btn btn-primary min-h-11 w-full">{busy ? "Comprobando…" : "Abrir libro"}</button>
-                  <p className="hint">{contact}</p>
-                </form>
+                <>
+                  {phone ? (
+                    <div className="max-w-md space-y-3">
+                      <button type="button" className="btn btn-primary min-h-12 w-full" onClick={() => setSheet(true)}><Icon name="lock" size={18} />Introducir código</button>
+                      <p className="hint">{contact}</p>
+                      <Sheet open={sheet} onClose={() => setSheet(false)} label="Introduce tu código">
+                        {codeForm}
+                      </Sheet>
+                    </div>
+                  ) : (
+                    codeForm
+                  )}
+                </>
               )}
             </div>
           </div>

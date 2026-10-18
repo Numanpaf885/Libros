@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#1E3A5F"/>
+  <g color="#FFFFFF" transform="translate(6.4 6.4) scale(0.8)">
+  <defs>
+    <clipPath id="horizonte-f-in"><circle cx="32" cy="32" r="21.8"/></clipPath>
+    <mask id="horizonte-f-m" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M32 39 V60" stroke="#000" stroke-width="3.2" stroke-linecap="round"/>
+      
+    </mask>
+  </defs>
+  <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="4.6"/>
+  <g clip-path="url(#horizonte-f-in)">
+    <path mask="url(#horizonte-f-m)" fill="currentColor"
+      d="M4 41 Q18 30 32 39 Q46 30 60 41 L60 64 L4 64 Z"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 24 H26.5 V28"/>
+    <path d="M49 24 H37.5 V28"/>
+  </g>
+  <circle cx="32" cy="24" r="3.4" fill="currentColor"/>
+  </g>
+</svg>

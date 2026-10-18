@@ -36,10 +36,10 @@ export default function CatalogGrid({ books }: { books: CatalogBook[] }) {
         </p>
       )}
       <ul className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 md:gap-x-8 lg:grid-cols-4">
-        {list.map((b) => (
-          <li key={b.slug}>
-            <Link href={`/b/${b.slug}`} className="group block rounded-card">
-              <Cover slug={b.slug} title={b.title} className="transition-colors duration-150 group-hover:border-line-strong" />
+        {list.map((b, i) => (
+          <li key={b.slug} className="rise" style={{ ["--i" as string]: i }}>
+            <Link href={`/b/${b.slug}`} className="group press block rounded-card">
+              <Cover slug={b.slug} title={b.title} transition className="transition-colors duration-150 group-hover:border-line-strong" />
               <h3 className="mt-3 text-lg leading-snug underline-offset-4 group-hover:underline">{b.title}</h3>
               {b.author && <p className="mt-0.5 text-sm text-muted">{b.author}</p>}
               <p className="mt-1.5 flex items-center justify-between gap-2 text-sm text-muted">

@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
 import { SITE_CONTACT, SITE_LINKS, SITE_NAME, SITE_INTRO } from "@/lib/site";
 
 export default function SiteFooter() {
   return (
-    <footer id="contacto" className="mt-auto border-t border-line bg-surface">
+    <footer id="contacto" className="mt-auto border-t border-line bg-surface" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="mx-auto grid w-full max-w-[1200px] gap-8 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr]">
         <div className="max-w-md">
-          <Link href="/" className="font-serif text-2xl font-semibold">{SITE_NAME}</Link>
+          <Link href="/" className="press inline-flex min-h-11 items-center gap-2.5 font-serif text-2xl font-semibold"><Logo size={30} className="text-accent" />{SITE_NAME}</Link>
           <p className="mt-2 text-[15px] text-muted">{SITE_INTRO}</p>
         </div>
         <div>

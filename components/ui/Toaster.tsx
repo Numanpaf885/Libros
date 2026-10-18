@@ -18,9 +18,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4" aria-live="polite" role="status">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 px-4" style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }} aria-live="polite" role="status">
         {items.map((t) => (
-          <div key={t.id} className={`fade-in pointer-events-auto flex max-w-md items-start gap-3 rounded-card border bg-surface px-4 py-3 text-[15px] shadow-sm ${t.kind === "error" ? "border-danger" : "border-ok"}`}>
+          <div key={t.id} className={`toast-in pointer-events-auto flex max-w-md items-start gap-3 rounded-card border bg-bg px-4 py-3 text-[15px] shadow-[var(--shadow-float)] ${t.kind === "error" ? "border-danger" : "border-ok"}`}>
             <Icon name={t.kind === "error" ? "close" : "check"} className={t.kind === "error" ? "mt-0.5 shrink-0 text-danger" : "mt-0.5 shrink-0 text-ok"} />
             <span>{t.text}</span>
           </div>

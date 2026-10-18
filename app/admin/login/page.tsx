@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Logo } from "@/components/brand/Logo";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function AdminLogin() {
@@ -33,6 +34,7 @@ export default function AdminLogin() {
       <div className="mb-4 flex justify-end"><ThemeToggle /></div>
       <form onSubmit={submit} className="card flex flex-col gap-5 p-6 sm:p-8">
         <div>
+          <Logo size={40} className="mb-3 text-accent" />
           <h1 className="text-4xl">Administración</h1>
           <p className="hint mt-1">Entra para gestionar tus libros y códigos.</p>
         </div>
