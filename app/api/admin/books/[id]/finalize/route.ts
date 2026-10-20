@@ -29,6 +29,10 @@ export const POST = safe(async (req: Request, { params }: { params: Promise<{ id
     storage_prefix: book.storage_prefix,
     cover_path: book.cover_path,
     page_count: book.page_count,
+    // the old prefix (with the old original PDF) is deleted just below: the replaced book starts with no original and no labels
+    original_pdf_size: 0,
+    original_pdf_pages: 0,
+    page_labels: "",
   });
   await deleteBookRow(book.id); // temp row only; its pages now belong to the original
   await storage().deletePrefix(oldPrefix);

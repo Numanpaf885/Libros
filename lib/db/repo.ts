@@ -33,10 +33,12 @@ const toBook = (r: string[]): Book => ({
   status: r[7] === "published" ? "published" : r[7] === "uploading" ? "uploading" : "draft", updated_at: r[8],
   // columns added later: older rows simply do not have them
   author: r[9] ?? "", category: r[10] ?? "", year: r[11] ?? "",
+  page_labels: r[12] ?? "", original_pdf_size: Number(r[13]) || 0, original_pdf_pages: Number(r[14]) || 0,
 });
 const fromBook = (b: Book): string[] => [
   b.id, b.slug, b.title, b.description, String(b.page_count),
   b.storage_prefix, b.cover_path, b.status, b.updated_at, b.author, b.category, b.year,
+  b.page_labels, b.original_pdf_size ? String(b.original_pdf_size) : "", b.original_pdf_pages ? String(b.original_pdf_pages) : "",
 ];
 const toCode = (r: string[]): AccessCode => ({
   id: r[0], book_id: r[1], code_hash: r[2], label: r[3], created_at: r[4],
@@ -45,6 +47,14 @@ const toCode = (r: string[]): AccessCode => ({
 const fromCode = (c: AccessCode): string[] => [
   c.id, c.book_id, c.code_hash, c.label, c.created_at, c.expires_at, c.revoked ? "TRUE" : "FALSE",
 ];
+
+/**
+ * The original-PDF and page-numbering features need the three columns `npm run setup-sheet` appends to `books`.
+ * Without them nothing about those features is stored, so they stay hidden (and their routes answer 409).
+ */
+export async function bookExtrasReady(): Promise<boolean> {
+  return table().hasColumn("books", 12, "page_labels");
+}
 
 export async function listBooks(): Promise<Book[]> {
   return (await cached("books")).filter((r) => r[0]).map(toBook);
@@ -55,8 +65,8 @@ export async function getBookBySlug(slug: string) {
 export async function getBookById(id: string) {
   return (await listBooks()).find((b) => b.id === id) ?? null;
 }
-export async function createBook(input: Omit<Book, "id" | "updated_at" | "author" | "category" | "year"> & Partial<Pick<Book, "author" | "category" | "year">>) {
-  const book: Book = { author: "", category: "", year: "", ...input, id: randomUUID(), updated_at: new Date().toISOString() };
+export async function createBook(input: Omit<Book, "id" | "updated_at" | "author" | "category" | "year" | "page_labels" | "original_pdf_size" | "original_pdf_pages"> & Partial<Pick<Book, "author" | "category" | "year" | "page_labels" | "original_pdf_size" | "original_pdf_pages">>) {
+  const book: Book = { author: "", category: "", year: "", page_labels: "", original_pdf_size: 0, original_pdf_pages: 0, ...input, id: randomUUID(), updated_at: new Date().toISOString() };
   await table().append("books", fromBook(book));
   bust("books");
   return book;

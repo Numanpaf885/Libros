@@ -13,6 +13,12 @@ import { formatEta, uploadFlow, type Progress as UploadProgress, type UploadMode
 import type { AdminBook } from "@/lib/types";
 import DownloadDialog from "@/components/download/DownloadDialog";
 import type { ImagePlan } from "@/lib/client/images";
+import { abortOriginal, uploadOriginal, type OriginalProgress } from "@/lib/client/multipart";
+import { readPdfMeta } from "@/lib/client/render-pdf";
+import { parseLabels, rangesFromPageLabels, stringifyLabels } from "@/lib/page-labels";
+import BytesProgress from "./BytesProgress";
+import OriginalPanel from "./OriginalPanel";
+import PageNumbering from "./PageNumbering";
 import CodesPanel from "./CodesPanel";
 import DownloadsPanel, { DownloadHistory } from "./DownloadsPanel";
 import ImagePicker, { useImagePlan } from "./ImagePicker";
@@ -52,14 +58,41 @@ function useUploader(onDone: () => void) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [err, setErr] = useState("");
+  const [orig, setOrig] = useState<OriginalProgress | null>(null);
   const ctl = useRef<AbortController | null>(null);
 
-  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft" }) {
+  /** `original`: also store the PDF itself (fast downloads). `extras`: the sheet has the columns that need. */
+  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft"; original?: boolean; extras?: boolean }) {
+    const { original, extras, ...flow } = o;
     ctl.current = new AbortController();
-    setBusy(true); setErr(""); setProgress(null);
+    setBusy(true); setErr(""); setProgress(null); setOrig(null);
     try {
-      await uploadFlow({ status: "draft", ...o, onProgress: setProgress, signal: ctl.current.signal });
+      const bookId = await uploadFlow({ status: "draft", ...flow, onProgress: setProgress, signal: ctl.current.signal });
       toast("ok", "Libro subido correctamente");
+      // After the pages are stored (the book is complete and usable): printed page numbers found in the PDF, then the original.
+      if (flow.file && extras) {
+        let labels = "";
+        try {
+          const meta = await readPdfMeta(flow.file);
+          labels = stringifyLabels(rangesFromPageLabels(meta.labels));
+          if (labels) await api(`/api/admin/books/${bookId}/labels`, "PUT", { page_labels: labels });
+          if (original) {
+            await uploadOriginal({ bookId, file: flow.file, pages: meta.pageCount, pageLabels: labels, onProgress: setOrig, signal: ctl.current.signal });
+            toast("ok", "PDF original guardado");
+          }
+        } catch (e) {
+          if (original) {
+            if (ctl.current.signal.aborted) {
+              await abortOriginal(bookId);
+              const m = "Subida del PDF original cancelada. El libro ya está subido; puedes añadirlo después con «PDF original».";
+              setErr(m); toast("error", m);
+            } else {
+              const m = "El libro se ha subido, pero el PDF original no. Abre «PDF original» en el libro y selecciona el mismo PDF para continuar.";
+              setErr(m); toast("error", m);
+            }
+          } else void e;
+        }
+      }
     } catch (e) {
       const what = o.images ? "las mismas imágenes en el mismo orden" : "el mismo PDF";
       const m = ctl.current.signal.aborted
@@ -75,10 +108,10 @@ function useUploader(onDone: () => void) {
     onDone(); // refresh: an interrupted row stays "uploading" and can be resumed
     setBusy(false);
   }
-  return { busy, progress, err, start, cancel: () => ctl.current?.abort() };
+  return { busy, progress, orig, err, start, cancel: () => ctl.current?.abort() };
 }
 
-function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
+function UploadCard({ onDone, phone, extras }: { onDone: () => void; phone: boolean; extras: boolean }) {
   const up = useUploader(onDone);
   const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
@@ -89,6 +122,7 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
   const [year, setYear] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("published");
   const [source, setSource] = useState<SourceKind>("pdf");
+  const [keepOriginal, setKeepOriginal] = useState(true); // also store the PDF itself (fast downloads)
   const imgs = useImagePlan();
   const input = useRef<HTMLInputElement>(null);
 
@@ -99,7 +133,7 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
       onSubmit={async (e) => {
         e.preventDefault();
         if (source === "images" ? !imgs.plan : !file) return;
-        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year } });
+        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year }, extras, original: extras && source === "pdf" && keepOriginal });
         setFile(null); setTitle(""); setDescription(""); setAuthor(""); setCategory(""); setYear("");
         imgs.reset();
         if (input.current) input.current.value = "";
@@ -166,11 +200,19 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
         </div>
       </div>
 
+      {extras && source === "pdf" && (
+        <label className="flex min-h-11 items-start gap-3 text-[15px]">
+          <input type="checkbox" name="keep-original" checked={keepOriginal} disabled={up.busy} onChange={(e) => setKeepOriginal(e.target.checked)} className="mt-1" />
+          <span>Guardar también el PDF original (descargas rápidas)<span className="hint block">Se sube aparte, por partes, después de las páginas. Solo lo recibe quien descarga el libro.</span></span>
+        </label>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <button aria-busy={up.busy} disabled={up.busy || (source === "images" ? !imgs.plan : !file) || !title.trim()} className="btn btn-primary">Subir libro</button>
         {up.busy && <button type="button" className="btn" onClick={up.cancel}>Cancelar</button>}
       </div>
       {(up.busy || up.progress) && <ProgressBar p={up.progress} waiting={source === "images" ? "Preparando las imágenes…" : undefined} />}
+      {up.orig && <BytesProgress p={up.orig} />}
       {up.err && !up.busy && <p role="alert" className="err">{up.err}</p>}
     </form>
   );
@@ -181,10 +223,10 @@ const CHIP: Record<AdminBook["status"], [string, string]> = {
   draft: ["chip chip-draft", "Borrador"],
   uploading: ["chip chip-busy", "Subiendo"],
 };
-type PanelName = "edit" | "codes" | "replace" | "delete" | "history";
+type PanelName = "edit" | "codes" | "replace" | "delete" | "history" | "original" | "numbering";
 const GRID = "md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6.5rem_7rem_20rem] md:items-center md:gap-4";
 
-function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean }) {
+function BookRow({ book, reload, phone, dl, extras }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean; extras: boolean }) {
   const toast = useToast();
   const [panel, setPanel] = useState<PanelName | null>(null);
   const [busy, setBusy] = useState(false);
@@ -197,9 +239,9 @@ function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => v
   const uploading = book.status === "uploading";
   /** resume an interrupted upload, continue a pending replacement, or start a replacement */
   const startReplace = (src: { file: File } | { images: ImagePlan }) =>
-    up.start(uploading ? { ...src, mode: "resume", bookId: book.id }
-      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published" }
-      : { ...src, mode: "replace", bookId: book.id });
+    up.start(uploading ? { ...src, mode: "resume", bookId: book.id, extras }
+      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published", extras }
+      : { ...src, mode: "replace", bookId: book.id, extras });
   const toggle = (p: PanelName) => setPanel(panel === p ? null : p);
   const [chipClass, chipText] = CHIP[book.status];
 
@@ -235,6 +277,8 @@ function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => v
               <button className="btn btn-sm" onClick={() => toggle("replace")}>{book.pending_replacement ? "Continuar sustitución" : "Sustituir PDF"}</button>
               {dl && <button className="btn btn-sm" onClick={() => setAskDownload(true)}><Icon name="download" size={16} />Descargar</button>}
               {dl && <button className="btn btn-sm" onClick={() => toggle("history")}>Historial</button>}
+              {extras && <button className="btn btn-sm" onClick={() => toggle("original")}>PDF original</button>}
+              {extras && <button className="btn btn-sm" onClick={() => toggle("numbering")}>Numeración</button>}
             </>
           )}
           <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
@@ -275,6 +319,7 @@ function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => v
                   : book.pending_replacement
                     ? `Hay una sustitución en curso. Selecciona ${source === "images" ? "las mismas imágenes en el mismo orden" : "el mismo PDF"} para continuar; mientras tanto el libro sigue mostrando las páginas antiguas.`
                     : "Las páginas nuevas se suben primero a otra ubicación; las antiguas se borran solo cuando todo está listo."}
+                {extras && source === "pdf" && !uploading && " Se guardan los números de página impresos que traiga el PDF. El PDF original guardado se borra al terminar: súbelo de nuevo en «PDF original»."}
               </p>
               {source === "pdf" ? (
                 <input type="file" accept="application/pdf" disabled={up.busy} className="block w-full text-sm text-muted file:mr-3 file:rounded-ctl file:border file:border-line-strong file:bg-surface file:px-4 file:py-2 file:text-fg"
@@ -303,15 +348,19 @@ function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => v
 
           {panel === "history" && <DownloadHistory filter={{ book: book.id }} />}
 
+          {panel === "original" && extras && <OriginalPanel book={book} onChanged={reload} />}
+
+          {panel === "numbering" && extras && <PageNumbering book={book} onSaved={reload} />}
+
           {panel === "codes" && <CodesPanel book={book} onBookChanged={reload} />}
         </div>
       )}
 
-      {dl && <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} bookTitle={book.title} slug={book.slug} pageCount={book.page_count} mode="admin" bookId={book.id} />}
+      {dl && <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} bookTitle={book.title} slug={book.slug} pageCount={book.page_count} mode="admin" bookId={book.id} labels={parseLabels(book.page_labels, book.page_count)} />}
       <ConfirmDialog
         open={askDelete} danger title="Eliminar libro" confirmLabel="Eliminar para siempre" busy={busy} confirmDisabled={confirm !== book.title}
         onCancel={() => setAskDelete(false)}
-        onConfirm={() => run(async () => { await api(`/api/admin/books/${book.id}`, "DELETE", { title: confirm }); setAskDelete(false); toast("ok", "Libro eliminado"); reload(); })}
+        onConfirm={() => run(async () => { await abortOriginal(book.id); await api(`/api/admin/books/${book.id}`, "DELETE", { title: confirm }); setAskDelete(false); toast("ok", "Libro eliminado"); reload(); })}
       >
         <p>Se borrarán de forma permanente las páginas, la fila de la hoja y todos sus códigos. Escribe <strong className="text-fg">{book.title}</strong> para confirmar.</p>
         <input value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field" aria-label="Escribe el título del libro para confirmar" autoComplete="off" />
@@ -327,13 +376,14 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const [books, setBooks] = useState<AdminBook[] | null>(null);
   const [version, setVersion] = useState(0);
   const [tab, setTab] = useState<"books" | "users" | "downloads">("books");
+  const [extras, setExtras] = useState(false); // the sheet has books.page_labels / original_pdf_* (original PDF + page numbering)
   const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
     let dead = false;
-    api<{ books: AdminBook[] }>("/api/admin/books")
-      .then((r) => { if (!dead) setBooks(r.books); })
+    api<{ books: AdminBook[]; extras?: boolean }>("/api/admin/books")
+      .then((r) => { if (!dead) { setBooks(r.books); setExtras(!!r.extras); } })
       .catch((e) => {
         if (dead) return;
         if (e instanceof AuthError) router.replace("/admin/login");
@@ -384,7 +434,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       ) : (
       <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
-      <UploadCard onDone={load} phone={phone} />
+      <UploadCard onDone={load} phone={phone} extras={extras} />
 
       {books === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-28 rounded-card" /></div>
@@ -398,7 +448,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
               <span role="columnheader">Título</span><span role="columnheader">Estado</span><span role="columnheader">Páginas</span><span role="columnheader">Actualizado</span><span role="columnheader" className="text-right">Acciones</span>
             </div>
             <ul role="rowgroup" className="space-y-3 md:space-y-0">
-              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} />)}
+              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} extras={extras} />)}
             </ul>
           </div>
         </section>

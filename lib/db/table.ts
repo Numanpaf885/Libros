@@ -40,6 +40,10 @@ export const TABS = {
   bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
   downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
 } as const;
-/** Columns appended at the END of an existing tab later. The tab only has them once `npm run setup-sheet` has run. */
-export const EXTRA_COLS = { users: ["can_download"] } as const;
+/** Columns appended at the END of an existing tab later, in this order. A tab only has them once `npm run setup-sheet` has run. */
+export const EXTRA_COLS = {
+  users: ["can_download"],
+  books: ["page_labels", "original_pdf_size", "original_pdf_pages"],
+  downloads: ["method"],
+} as const;
 export type TabName = keyof typeof TABS;

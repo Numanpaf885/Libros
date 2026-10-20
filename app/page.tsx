@@ -42,7 +42,7 @@ export default async function Home() {
   }
   const books: CatalogBook[] = published.map((b) => ({
     slug: b.slug, title: b.title, author: b.author, category: b.category, year: b.year, description: b.description,
-    pageCount: b.page_count, updatedAt: b.updated_at, unlocked: unlockedIds.has(b.id),
+    pageCount: b.page_count, ...(b.page_labels ? { pageLabels: b.page_labels } : {}), updatedAt: b.updated_at, unlocked: unlockedIds.has(b.id),
   }));
   const featured = books[0];
   const unlocked = books.filter((b) => b.unlocked);

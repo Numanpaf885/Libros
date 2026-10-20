@@ -1,6 +1,7 @@
 import "server-only";
 import { listBooks } from "./db/repo";
 import { listDownloads } from "./db/users";
+import { parseLabels, rangeText } from "./page-labels";
 import type { DownloadRecord } from "./types";
 
 export const LOG_PAGE_SIZE = 50;
@@ -8,6 +9,8 @@ export interface LogQuery { user?: string; book?: string; from?: string; to?: st
 export interface LogRow extends DownloadRecord {
   /** pages of the book now (null when the book no longer exists), so the screen can say "Todo (1–366)" */
   book_total: number | null;
+  /** the book's printed page numbering now ("" = none): the log stores file pages, the screen can show both */
+  book_labels: string;
 }
 
 const ms = (iso: string) => { const t = Date.parse(iso); return Number.isFinite(t) ? t : null; };
@@ -23,8 +26,8 @@ export async function queryLog(q: LogQuery) {
     (from === null || Date.parse(d.created_at) >= from) &&
     (to === null || Date.parse(d.created_at) <= to));
   hit.sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const books = new Map((await listBooks()).map((b) => [b.id, b.page_count]));
-  const withTotal = (d: DownloadRecord): LogRow => ({ ...d, book_total: books.get(d.book_id) ?? null });
+  const books = new Map((await listBooks()).map((b) => [b.id, b]));
+  const withTotal = (d: DownloadRecord): LogRow => ({ ...d, book_total: books.get(d.book_id)?.page_count ?? null, book_labels: books.get(d.book_id)?.page_labels ?? "" });
 
   // Choices for the filters come from the whole log, so people and books that no longer exist can still be picked.
   const users = new Map<string, string>();
@@ -48,10 +51,12 @@ export async function queryLog(q: LogQuery) {
   };
 }
 
-const STATUS_ES: Record<DownloadRecord["status"], string> = { completed: "Completada", cancelled: "Cancelada", failed: "Fallida", started: "En curso" };
+const METHOD_ES: Record<string, string> = { original: "PDF original", recorte: "Recorte del original", imagenes: "Desde las páginas" };
+export const methodEs = (m: string) => METHOD_ES[m] ?? "";
+const STATUS_ES: Record<DownloadRecord["status"], string> = { completed: "Completada", cancelled: "Cancelada", failed: "Fallida", started: "En curso", sent: "Enviada" };
 export const statusEs = (s: DownloadRecord["status"]) => STATUS_ES[s];
-export const pagesLabel = (d: Pick<DownloadRecord, "from_page" | "to_page"> & { book_total: number | null }) =>
-  d.from_page === 1 && d.book_total === d.to_page ? `Todo (1–${d.to_page})` : d.from_page === d.to_page ? String(d.from_page) : `${d.from_page}–${d.to_page}`;
+export const pagesLabel = (d: Pick<DownloadRecord, "from_page" | "to_page"> & { book_total: number | null; book_labels?: string }) =>
+  d.from_page === 1 && d.book_total === d.to_page ? `Todo (1–${d.to_page})` : d.book_labels ? rangeText(parseLabels(d.book_labels), d.from_page, d.to_page) : d.from_page === d.to_page ? String(d.from_page) : `${d.from_page}–${d.to_page}`;
 export const userLabel = (d: DownloadRecord) => (d.actor === "admin" ? "Admin" : `${d.display_name} (@${d.username})`);
 const when = (iso: string) => new Date(iso).toLocaleString("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).replace(/\./g, "");
 
@@ -62,7 +67,7 @@ const cell = (v: string) => {
 };
 /** CSV for Excel in Spain: UTF-8 with BOM, ";" as the separator, CRLF lines. */
 export function toCsv(rows: LogRow[]): string {
-  const head = ["Fecha y hora", "Usuario", "Libro", "Páginas", "Nº de páginas", "Dispositivo", "Estado"];
-  const lines = rows.map((d) => [when(d.created_at), userLabel(d), d.book_title, pagesLabel(d), String(d.page_count), d.device, statusEs(d.status)]);
+  const head = ["Fecha y hora", "Usuario", "Libro", "Páginas", "Nº de páginas", "Dispositivo", "Estado", "Método"];
+  const lines = rows.map((d) => [when(d.created_at), userLabel(d), d.book_title, pagesLabel(d), String(d.page_count), d.device, statusEs(d.status), methodEs(d.method)]);
   return "﻿" + [head, ...lines].map((l) => l.map(cell).join(";")).join("\r\n") + "\r\n";
 }

@@ -6,7 +6,7 @@
 import { google } from "googleapis";
 
 const TABS: Record<string, string[]> = {
-  books: ["id", "slug", "title", "description", "page_count", "storage_prefix", "cover_path", "status", "updated_at", "author", "category", "year"],
+  books: ["id", "slug", "title", "description", "page_count", "storage_prefix", "cover_path", "status", "updated_at", "author", "category", "year", "page_labels", "original_pdf_size", "original_pdf_pages"],
   access_codes: ["id", "book_id", "code_hash", "label", "created_at", "expires_at", "revoked"],
   admins: ["username", "password_hash"],
   // Reader accounts (added later; the tabs above are never modified).
@@ -18,7 +18,7 @@ const TABS: Record<string, string[]> = {
   // Bookmarks ("Marcadores")
   bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
   // Download log (snapshots of user / book names, so it stays readable after renames and deletions)
-  downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
+  downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at", "method"],
 };
 
 function need(name: string): string {

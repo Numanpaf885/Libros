@@ -26,7 +26,7 @@ export interface OpenPdf {
  * Opens a local PDF WITHOUT reading it all into memory: pdf.js asks for byte ranges and we
  * answer each one with File.slice(). An 800 MB file therefore costs only what pages need.
  */
-export async function openPdf(file: File): Promise<OpenPdf> {
+async function openDocument(file: File) {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -43,6 +43,21 @@ export async function openPdf(file: File): Promise<OpenPdf> {
     disableStream: true,
   });
   const doc = await task.promise;
+  return { doc, task };
+}
+
+/** Page count and printed page labels (as the PDF stores them: one string per page, or null) without rendering anything. */
+export async function readPdfMeta(file: File): Promise<{ pageCount: number; labels: string[] | null }> {
+  const { doc, task } = await openDocument(file);
+  try {
+    return { pageCount: doc.numPages, labels: await doc.getPageLabels() };
+  } finally {
+    await task.destroy();
+  }
+}
+
+export async function openPdf(file: File): Promise<OpenPdf> {
+  const { doc, task } = await openDocument(file);
 
   return {
     pageCount: doc.numPages,

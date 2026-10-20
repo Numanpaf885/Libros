@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cover from "@/components/home/Cover";
 import { meta as metaLine } from "@/components/home/types";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -8,9 +8,10 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import Icon from "@/components/ui/Icon";
 import Sheet, { usePhone } from "@/components/ui/Sheet";
 import Viewer from "@/components/reader/Viewer";
+import { labelOf, parseLabels } from "@/lib/page-labels";
 import { useMe } from "@/lib/client/me";
 
-export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number }
+export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number; /** printed page numbering (JSON); "" = none */ pageLabels?: string }
 interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null; can_download?: boolean }
 type Outcome = { ok: true; progress: number; canDownload: boolean } | { error: string };
 
@@ -56,6 +57,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const [canDownload, setCanDownload] = useState(false); // signed in, with the download permission, and this book is theirs
   const phone = usePhone(); // phones: the code is entered in a bottom sheet
   const me = useMe();
+  const labels = useMemo(() => parseLabels(book.pageLabels, book.pageCount), [book.pageLabels, book.pageCount]);
 
   const remote = useRef(0); // page saved on the account (signed-in readers), read with the meta request
   const open = useCallback((start: number | null) => {
@@ -105,7 +107,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const expired = useCallback(() => { setReading(null); setUnlocked(false); setError("Tu acceso ha terminado. Introduce un código válido."); }, []);
 
   if (reading && unlocked) {
-    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} canDownload={canDownload} onClose={close} onExpired={expired} />;
+    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} canDownload={canDownload} labels={labels} onClose={close} onExpired={expired} />;
   }
 
   const codeForm = (
@@ -164,7 +166,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                 <div className="flex flex-wrap items-center gap-3">
                   {saved > 0 ? (
                     <>
-                      <button className="btn btn-primary min-h-11 px-6" onClick={() => open(saved)}>Continuar en la página {saved}</button>
+                      <button className="btn btn-primary min-h-11 px-6" onClick={() => open(saved)}>Continuar en la página {labels.length ? labelOf(labels, saved) || saved : saved}</button>
                       <button className="btn min-h-11 px-6" onClick={() => open(1)}>Empezar desde el principio</button>
                     </>
                   ) : (

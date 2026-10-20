@@ -15,7 +15,7 @@ export interface AdminUserView {
   assigned: string[];
   /** books the reader unlocked with an access code (ids) */
   via_code: string[];
-  progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string }[];
+  progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string; /** printed numbering of the book; only present when it has one */ page_labels?: string }[];
   passkeys: number;
   can_download: boolean;
 }
@@ -35,7 +35,7 @@ export async function adminUserViews(users: UserRecord[], books: Book[]): Promis
       via_code: [...new Set(mine.filter((g) => g.source === "code" && byId.has(g.book_id)).map((g) => g.book_id))],
       progress: progress
         .filter((p) => p.user_id === u.id && byId.has(p.book_id))
-        .map((p) => ({ book_id: p.book_id, title: byId.get(p.book_id)!.title, page: p.page, page_count: byId.get(p.book_id)!.page_count, updated_at: p.updated_at })),
+        .map((p) => ({ book_id: p.book_id, title: byId.get(p.book_id)!.title, page: p.page, page_count: byId.get(p.book_id)!.page_count, updated_at: p.updated_at, ...(byId.get(p.book_id)!.page_labels ? { page_labels: byId.get(p.book_id)!.page_labels } : {}) })),
       passkeys: (await passkeysOf(u.id)).length,
       can_download: u.can_download,
     };

@@ -7,6 +7,8 @@ export interface CatalogBook {
   year: string;
   description: string;
   pageCount: number;
+  /** printed page numbering (books.page_labels); "" = none */
+  pageLabels?: string;
   updatedAt: string;
   unlocked: boolean;
 }

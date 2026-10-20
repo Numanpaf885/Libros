@@ -12,10 +12,23 @@ export interface Storage {
   list(prefix: string): Promise<string[]>;
   /** Deletes every object under the prefix, in batches. Returns the count. */
   deletePrefix(prefix: string): Promise<number>;
+  /** Size in bytes of every object under the prefix, by key. */
+  listSizes(prefix: string): Promise<Record<string, number>>;
+  /** Size in bytes of one object, or null when it does not exist. */
+  head(key: string): Promise<number | null>;
+  deleteKey(key: string): Promise<void>;
+  /** Like presignGet, but the browser saves it as an attachment called `filename`. */
+  presignDownload(key: string, filename: string, ttl?: number): Promise<string>;
+  /** S3 multipart upload (the original PDF): the server creates and completes it, the browser PUTs parts. */
+  createMultipart(key: string): Promise<string>;
+  presignPart(key: string, uploadId: string, part: number): Promise<string>;
+  listParts(key: string, uploadId: string): Promise<{ part: number; size: number; etag: string }[]>;
+  completeMultipart(key: string, uploadId: string, parts: { part: number; etag: string }[]): Promise<void>;
+  abortMultipart(key: string, uploadId: string): Promise<void>;
 }
 export const storage = (): Storage => {
   assertSafeConfig();
   return isMock() ? mock : r2;
 };
 
-export { GET_TTL_S, OBJECT_RE } from "./constants";
+export { GET_TTL_S, MAX_ORIGINAL_BYTES, MAX_PARTS, OBJECT_RE, ORIGINAL_RE, PART_SIZE, originalKey } from "./constants";

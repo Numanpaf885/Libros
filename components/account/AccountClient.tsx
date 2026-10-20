@@ -1,4 +1,5 @@
 "use client";
+import { labelOf, labelTotal, parseLabels } from "@/lib/page-labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -11,7 +12,12 @@ import { refreshMe, setMe } from "@/lib/client/me";
 import { registerPasskey, usePasskeySupport } from "@/lib/client/passkeys";
 import StrengthMeter from "./StrengthMeter";
 
-interface BookRow { slug: string; title: string; author: string; page_count: number; page: number }
+/** "Página 45 de 352": the book's printed numbers when it has them. */
+const pageText = (b: { page: number; page_count: number; page_labels?: string }) => {
+  const r = parseLabels(b.page_labels, b.page_count);
+  return r.length ? `Página ${labelOf(r, b.page) || b.page} de ${labelTotal(r, b.page_count)}` : `Página ${b.page} de ${b.page_count}`;
+};
+interface BookRow { slug: string; title: string; author: string; page_count: number; page: number; page_labels?: string }
 interface PasskeyRow { id: string; label: string; created_at: string; last_used_at: string }
 
 export default function AccountClient({ user }: { user: { username: string; display_name: string } }) {
@@ -87,7 +93,7 @@ export default function AccountClient({ user }: { user: { username: string; disp
               <li key={b.slug} className="py-3 first:pt-0 last:pb-0">
                 <Link href={b.page > 1 ? `/b/${b.slug}#p=${b.page}` : `/b/${b.slug}`} className="block rounded-ctl">
                   <p className="font-serif text-xl font-semibold leading-tight">{b.title}</p>
-                  <p className="tnum text-sm text-muted">{b.page > 0 ? `Página ${b.page} de ${b.page_count}` : `${b.page_count} páginas · sin empezar`}</p>
+                  <p className="tnum text-sm text-muted">{b.page > 0 ? pageText(b) : `${b.page_count} páginas · sin empezar`}</p>
                   <div className="mt-2 h-1 overflow-hidden rounded-[2px] bg-line" role="progressbar" aria-label={`Progreso en ${b.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((b.page / b.page_count) * 100)}>
                     <div className="h-full bg-accent" style={{ width: `${(b.page / b.page_count) * 100}%` }} />
                   </div>

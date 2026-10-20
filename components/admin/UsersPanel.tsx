@@ -1,4 +1,5 @@
 "use client";
+import { labelOf, labelTotal, parseLabels } from "@/lib/page-labels";
 import { useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Icon from "@/components/ui/Icon";
@@ -8,11 +9,17 @@ import { fmtDate } from "@/lib/client/format";
 import type { AdminBook } from "@/lib/types";
 import { DownloadHistory } from "./DownloadsPanel";
 
+/** "Página 45 de 352" in the book's printed numbers when it has them (storage keeps the file page). */
+function progressText(p: { page: number; page_count: number; page_labels?: string }) {
+  const r = parseLabels(p.page_labels, p.page_count);
+  return r.length ? `Página ${labelOf(r, p.page) || p.page} de ${labelTotal(r, p.page_count)}` : `Página ${p.page} de ${p.page_count}`;
+}
+
 interface UserView {
   id: string; username: string; display_name: string; status: "pending" | "active" | "disabled";
   created_at: string; last_login_at: string; code_expires_at: string;
   all_books: boolean; assigned: string[]; via_code: string[];
-  progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string }[];
+  progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string; page_labels?: string }[];
   passkeys: number;
   can_download: boolean;
 }
@@ -116,7 +123,7 @@ function UserRow({ u, books, reload, issue, dl }: { u: UserView; books: AdminBoo
           <dt className="text-sm text-muted">Progreso de lectura</dt>
           <dd>
             {u.progress.length === 0 ? <span className="text-muted">Sin lecturas todavía</span> : (
-              <ul className="space-y-0.5">{u.progress.map((p) => <li key={p.book_id} className="tnum">{p.title}: Página {p.page} de {p.page_count}</li>)}</ul>
+              <ul className="space-y-0.5">{u.progress.map((p) => <li key={p.book_id} className="tnum">{p.title}: {progressText(p)}</li>)}</ul>
             )}
           </dd>
         </div>

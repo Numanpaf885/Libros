@@ -7,3 +7,12 @@ export const OBJECT_RE = /^books\/[a-f0-9]{32}\/(cover|[1-9][0-9]{0,4})\.webp$/;
 
 /** A replacement upload is a temporary "uploading" row whose slug points at the book being replaced. */
 export const REPLACE_SLUG = "__replace__";
+
+/** The optional original PDF of a book, next to its page images. Never served except through the download flow. */
+export const ORIGINAL_RE = /^books\/[a-f0-9]{32}\/original\.pdf$/;
+export const originalKey = (prefix: string) => `${prefix}/original.pdf`;
+/** Multipart upload of the original: 16 MB parts (R2 needs >= 5 MiB for every part but the last). */
+export const PART_SIZE = 16 * 1024 * 1024;
+export const MAX_PARTS = 10_000;
+/** Largest original PDF accepted (bytes). */
+export const MAX_ORIGINAL_BYTES = 2 * 1024 * 1024 * 1024;

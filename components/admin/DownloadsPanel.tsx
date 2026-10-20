@@ -1,4 +1,5 @@
 "use client";
+import { parseLabels, rangeText } from "@/lib/page-labels";
 import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
@@ -6,7 +7,7 @@ import { api, errText } from "@/lib/client/api";
 import { fmtDateTime } from "@/lib/client/format";
 import type { DownloadRecord } from "@/lib/types";
 
-export interface LogRow extends DownloadRecord { book_total: number | null }
+export interface LogRow extends DownloadRecord { book_total: number | null; book_labels?: string }
 interface LogResponse {
   available: boolean; total: number; page: number; pages: number; size: number; rows: LogRow[];
   filters: { users: { id: string; label: string }[]; books: { id: string; label: string }[]; has_admin: boolean };
@@ -18,8 +19,10 @@ const STATUS: Record<DownloadRecord["status"], [string, string]> = {
   cancelled: ["chip chip-draft", "Cancelada"],
   failed: ["chip border-danger text-danger", "Fallida"],
   started: ["chip chip-busy", "En curso"],
+  sent: ["chip chip-ok", "Enviada"],
 };
-const pagesLabel = (d: LogRow) => (d.from_page === 1 && d.book_total === d.to_page ? `Todo (1–${d.to_page})` : d.from_page === d.to_page ? String(d.from_page) : `${d.from_page}–${d.to_page}`);
+const METHOD: Record<string, string> = { original: "PDF original", recorte: "Recorte del original", imagenes: "Desde las páginas" };
+const pagesLabel = (d: LogRow) => (d.from_page === 1 && d.book_total === d.to_page ? `Todo (1–${d.to_page})` : d.book_labels ? rangeText(parseLabels(d.book_labels), d.from_page, d.to_page) : d.from_page === d.to_page ? String(d.from_page) : `${d.from_page}–${d.to_page}`);
 const qs = (f: LogFilter, extra: Record<string, string | number> = {}) => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries({ ...f, ...extra })) if (v !== undefined && v !== "") p.set(k, String(v));
@@ -50,7 +53,7 @@ export function LogTable({ rows, showUser = true, showBook = true }: { rows: Log
               <span role="cell" className="tnum" data-col="pages"><span className="text-muted md:hidden">Páginas: </span>{pagesLabel(d)}</span>
               <span role="cell" className="tnum md:text-right" data-col="count"><span className="text-muted md:hidden">Nº de páginas: </span>{d.page_count}</span>
               <span role="cell" data-col="device"><span className="text-muted md:hidden">Dispositivo: </span>{d.device}</span>
-              <span role="cell" className="mt-1 md:mt-0"><span className={`${chip} w-fit`}>{text}</span></span>
+              <span role="cell" className="mt-1 md:mt-0"><span className={`${chip} w-fit`}>{text}</span>{d.method && <span className="mt-1 block text-xs text-muted" data-col="method">{METHOD[d.method]}</span>}</span>
             </li>
           );
         })}

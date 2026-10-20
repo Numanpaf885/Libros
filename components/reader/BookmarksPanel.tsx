@@ -38,10 +38,14 @@ interface Props {
   onJump: (page: number) => void;
   onRename: (id: string, label: string) => void;
   onDelete: (id: string) => void;
+  /** printed number of a file page (default: the file page itself). Stored bookmarks keep the file page. */
+  nameOf?: (n: number) => string;
 }
 
 /** The list itself: used inside a bottom sheet on phones and a side panel on desktop. Labels are rendered as text only. */
-export default function BookmarksPanel({ slug, items, current, onJump, onRename, onDelete }: Props) {
+export default function BookmarksPanel({ slug, items, current, onJump, onRename, onDelete, nameOf = String }: Props) {
+  // the default name "Página 57" is stored with the file page; show the printed one instead
+  const shown = (b: Bookmark) => (b.label === `Página ${b.page}` ? `Página ${nameOf(b.page)}` : b.label);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -75,12 +79,12 @@ export default function BookmarksPanel({ slug, items, current, onJump, onRename,
               <button type="button" onClick={() => onJump(b.page)} className="press flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-ctl px-1 text-left hover:bg-fg/5" aria-current={b.page === current ? "page" : undefined}>
                 <Thumb slug={slug} n={b.page} />
                 <span className="min-w-0">
-                  <span className="block truncate text-[15px] font-medium">{b.label}</span>
-                  <span className="tnum block truncate text-sm text-muted">Pág. {b.page}{b.created_at ? ` · ${short(b.created_at)}` : ""}</span>
+                  <span className="block truncate text-[15px] font-medium">{shown(b)}</span>
+                  <span className="tnum block truncate text-sm text-muted">Pág. {nameOf(b.page)}{b.created_at ? ` · ${short(b.created_at)}` : ""}</span>
                 </span>
               </button>
-              <button type="button" className="btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!" aria-label={`Cambiar el nombre de «${b.label}»`} title="Cambiar nombre" onClick={() => { setDraft(b.label); setEditing(b.id); }}><Icon name="edit" size={18} /></button>
-              <button type="button" className="btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!" aria-label={`Eliminar «${b.label}»`} title="Eliminar" onClick={() => onDelete(b.id)}><Icon name="trash" size={18} /></button>
+              <button type="button" className="btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!" aria-label={`Cambiar el nombre de «${shown(b)}»`} title="Cambiar nombre" onClick={() => { setDraft(shown(b)); setEditing(b.id); }}><Icon name="edit" size={18} /></button>
+              <button type="button" className="btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!" aria-label={`Eliminar «${shown(b)}»`} title="Eliminar" onClick={() => onDelete(b.id)}><Icon name="trash" size={18} /></button>
             </div>
           )}
         </li>

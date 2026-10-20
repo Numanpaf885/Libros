@@ -14,6 +14,11 @@ export interface Book {
   author: string;
   category: string;
   year: string;
+  /** books.page_labels (column added later): compact JSON ranges of printed page numbers; "" = none (file index only). */
+  page_labels: string;
+  /** books.original_pdf_size / original_pdf_pages (columns added later): the stored original PDF; 0 = none. */
+  original_pdf_size: number;
+  original_pdf_pages: number;
 }
 
 export interface AccessCode {
@@ -40,6 +45,8 @@ interface PublicBook {
   author: string;
   category: string;
   year: string;
+  /** printed page numbering (see lib/page-labels.ts); "" when the book has none */
+  page_labels: string;
 }
 
 export interface AdminBook extends PublicBook {
@@ -48,6 +55,8 @@ export interface AdminBook extends PublicBook {
   updated_at: string;
   /** id of an in-progress replacement upload for this book, if any */
   pending_replacement: string | null;
+  /** size in bytes of the stored original PDF; 0 when there is none */
+  original_pdf_size: number;
 }
 
 export interface AdminCode {
@@ -94,7 +103,9 @@ export const ALL_BOOKS = "*";
 
 export interface BookmarkRecord { id: string; user_id: string; book_id: string; page: number; label: string; created_at: string }
 
-export type DownloadStatus = "started" | "completed" | "cancelled" | "failed";
+export type DownloadStatus = "started" | "completed" | "cancelled" | "failed" | "sent";
+/** How a download was built: the original PDF sent as is, a cut from the original, or built from the page images. */
+export type DownloadMethod = "original" | "recorte" | "imagenes";
 /** One row of the `downloads` tab. username, display_name and book_title are snapshots taken when the download started. */
 export interface DownloadRecord {
   id: string;
@@ -111,4 +122,6 @@ export interface DownloadRecord {
   status: DownloadStatus;
   created_at: string;
   finished_at: string;
+  /** downloads.method (column added later); "" for older rows */
+  method: DownloadMethod | "";
 }

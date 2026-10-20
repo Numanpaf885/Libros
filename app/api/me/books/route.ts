@@ -13,7 +13,7 @@ export const GET = safe(async (req: Request) => {
   const progress = new Map((await progressOf(s.user.id)).map((p) => [p.book_id, p.page]));
   const books = published
     .filter((b) => can.has(b.id))
-    .map((b) => ({ slug: b.slug, title: b.title, author: b.author, page_count: b.page_count, page: Math.min(progress.get(b.id) ?? 0, b.page_count) }));
+    .map((b) => ({ slug: b.slug, title: b.title, author: b.author, page_count: b.page_count, page: Math.min(progress.get(b.id) ?? 0, b.page_count), ...(b.page_labels ? { page_labels: b.page_labels } : {}) }));
   const res = ok({ books });
   await renewIfNeeded(res, s);
   return res;

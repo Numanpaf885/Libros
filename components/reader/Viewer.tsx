@@ -11,6 +11,7 @@ import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
 import BookmarksPanel from "./BookmarksPanel";
 import DownloadDialog from "@/components/download/DownloadDialog";
 import { flushBook, reportPage } from "@/lib/client/progress-sync";
+import { hasLabels, labelOf, labelSpan, labelTotal, pageFromInput, type LabelRange } from "@/lib/page-labels";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
 import PageCanvas from "./PageCanvas";
@@ -25,6 +26,8 @@ interface Props {
   offer: number;
   /** signed-in reader with the download permission (the server checks again on every request) */
   canDownload?: boolean;
+  /** printed page numbers (see lib/page-labels.ts); none = the file page numbers are shown, exactly as before */
+  labels?: LabelRange[];
   onClose: () => void;
   onExpired: () => void;
 }
@@ -53,7 +56,8 @@ function initialMode(): ReadMode {
   return isPhone() ? "book" : "pdf"; // Book mode on phones, PDF mode on desktop, until the reader picks one
 }
 
-export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, onClose, onExpired }: Props) {
+const NO_LABELS: LabelRange[] = [];
+export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, labels = NO_LABELS, onClose, onExpired }: Props) {
   const lsKey = `br:last:${slug}`;
   const [mode, setModeState] = useState<ReadMode>(initialMode);
   const [reduced] = useState(reducedMotion);
@@ -71,6 +75,8 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const [ratios, setRatios] = useState<Record<number, number>>({}); // pages that differ from est
   const [editing, setEditing] = useState<string | null>(null);
   const [pageMsg, setPageMsg] = useState("");
+  const [info, setInfo] = useState(false); // popover with the file pages behind the printed number
+  const [fileBox, setFileBox] = useState("");
   const [full, setFull] = useState(false);
   const [phase, setPhase] = useState<"in" | "out" | "off">("in"); // opening animation
   const toast = useToast();
@@ -151,14 +157,18 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const W = fit === "width" ? fitW : fit === "page" ? Math.min(fitW, availH / ratio0) : (REF_W * customPct) / 100;
   const pct = Math.round((W / REF_W) * 100);
   const ratioOf = (n: number) => ratios[n] ?? ratio0;
+  const printed = hasLabels(labels);
+  const gap = printed ? GAP + 14 : GAP; // room for the "Pág. 45" caption under each page
+  const name = (n: number) => labelOf(labels, n) || "—"; // printed number of a file page
+  const labelTot = labelTotal(labels, pageCount);
 
   const offs = (() => {
     const o = new Float64Array(pageCount + 1);
     o[0] = LEAD;
-    for (let i = 1; i <= pageCount; i++) o[i] = o[i - 1] + W * ratioOf(i) + GAP;
+    for (let i = 1; i <= pageCount; i++) o[i] = o[i - 1] + W * ratioOf(i) + gap;
     return o;
   })();
-  const total = offs[pageCount] - GAP + PAD;
+  const total = offs[pageCount] - gap + PAD;
   const indexAt = useCallback((y: number, o: Float64Array) => {
     let lo = 0, hi = pageCount - 1;
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (o[mid] <= y) lo = mid; else hi = mid - 1; }
@@ -181,7 +191,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   // Book mode: the pages on screen (a spread on wide screens, one page otherwise). The same rule as BookMode's.
   const wide = !pdf && box.w >= 1024 && box.w > box.h;
   const visible = pdf ? [page] : realPages(unitOf(page, wide), wide, pageCount);
-  const shownLabel = pdf || visible.length < 2 ? String(page) : `${visible[0]}–${visible[1]}`;
+  const shownLabel = !printed ? (pdf || visible.length < 2 ? String(page) : `${visible[0]}–${visible[1]}`) : pdf || visible.length < 2 ? name(page) : labelSpan(labels, visible[0], visible[1]);
   const ready = est !== null && (pdf ? size.w > 0 : box.w > 0);
 
   // ---- sizes ----
@@ -330,6 +340,14 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const submitPage = (e: React.FormEvent) => {
     e.preventDefault();
     const raw = (editing ?? "").trim();
+    if (printed) {
+      // what the reader types is the PRINTED page: a number, a roman numeral ("iii") or a label ("Portada")
+      const target = pageFromInput(labels, pageCount, raw);
+      if (target === null) { flash(`No hay ninguna página «${raw.slice(0, 12)}». Escribe un número, un número romano (iii) o una etiqueta.`); return; }
+      setPageMsg(""); setEditing(null); goTo(target);
+      (document.activeElement as HTMLElement | null)?.blur();
+      return;
+    }
     const n = Number(raw);
     if (!/^\d+$/.test(raw) || n < 1 || n > pageCount) { flash(`Introduce un número entre 1 y ${pageCount}`); return; }
     setPageMsg("");
@@ -409,15 +427,29 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
               <label htmlFor="pagina" className="sr-only">Ir a la página</label>
               <input
                 id="pagina" inputMode="numeric" autoComplete="off" enterKeyHint="go" aria-describedby="pagina-msg" aria-invalid={!!pageMsg}
-                value={editing ?? shownLabel} aria-label={!pdf && visible.length === 2 ? `Páginas ${visible[0]} y ${visible[1]} de ${pageCount}` : undefined}
-                onFocus={(e) => { setEditing(String(pdf ? page : (visible[0] ?? page))); e.currentTarget.select(); }}
-                onChange={(e) => setEditing(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+                value={editing ?? shownLabel} aria-label={!pdf && visible.length === 2 ? (printed ? `Páginas ${name(visible[0])} y ${name(visible[1])} de ${labelTot}` : `Páginas ${visible[0]} y ${visible[1]} de ${pageCount}`) : undefined}
+                onFocus={(e) => { setEditing(printed ? name(pdf ? page : (visible[0] ?? page)) : String(pdf ? page : (visible[0] ?? page))); e.currentTarget.select(); }}
+                onChange={(e) => setEditing(printed ? e.target.value.replace(/[^\p{L}\p{N} .\-]/gu, "").slice(0, 16) : e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
                 onBlur={() => { setEditing(null); }}
                 onKeyDown={(e) => { if (e.key === "Escape") { setEditing(null); setPageMsg(""); (e.currentTarget as HTMLInputElement).blur(); } }}
                 className={`field tnum min-h-11 px-1! py-1! text-center ${shownLabel.length > 3 ? "" : "w-12! sm:w-14!"}`}
                 style={shownLabel.length > 3 ? { width: `${shownLabel.length + 2}ch` } : undefined}
               />
-              <span className="tnum whitespace-nowrap text-muted">/ {pageCount}</span>
+              {printed ? (
+                <button type="button" className="tnum min-h-11 whitespace-nowrap rounded-ctl px-1.5 text-muted hover:bg-fg/10" aria-haspopup="dialog" aria-expanded={info} aria-controls="pagina-info" data-testid="page-info-open" onClick={() => { setInfo((v) => !v); setFileBox(""); }}>/ {labelTot}</button>
+              ) : (
+                <span className="tnum whitespace-nowrap text-muted">/ {pageCount}</span>
+              )}
+              {printed && info && (
+                <div id="pagina-info" role="dialog" aria-label="Páginas del archivo" data-testid="page-info" className="fade-in absolute right-0 top-full z-40 mt-1 w-64 space-y-2 rounded-card border border-line bg-bg p-3 text-[15px] shadow-[var(--shadow-float)]">
+                  <p>{visible.length > 1 && !pdf ? `Páginas ${visible[0]}–${visible[visible.length - 1]}` : `Página ${page}`} del archivo (de {pageCount})</p>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="pagina-archivo" className="sr-only">Ir a página del archivo</label>
+                    <input id="pagina-archivo" inputMode="numeric" autoComplete="off" placeholder="Ir a página del archivo" value={fileBox} onChange={(e) => setFileBox(e.target.value.replace(/\D/g, "").slice(0, 5))} className="field tnum min-h-11 min-w-0 flex-1" />
+                    <button type="button" className="btn btn-sm min-h-11" onClick={() => { const n = Number(fileBox); if (!/^\d+$/.test(fileBox) || n < 1 || n > pageCount) { flash(`Introduce un número entre 1 y ${pageCount}`); return; } setInfo(false); goTo(n); }}>Ir</button>
+                  </div>
+                </div>
+              )}
               <p id="pagina-msg" role="alert" className={`absolute right-0 top-full z-10 mt-1 w-max max-w-[16rem] rounded-ctl border border-danger bg-bg px-2.5 py-1.5 text-[13px] text-danger sm:left-0 sm:right-auto ${pageMsg ? "" : "hidden"}`}>{pageMsg}</p>
             </form>
 
@@ -450,6 +482,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
               {Array.from({ length: Math.max(0, winTo - winFrom + 1) }, (_, i) => winFrom + i).map((n) => (
                 <div key={n} className="absolute" style={{ top: offs[n - 1], left: (innerW - W) / 2 }}>
                   <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} marked={bm.marks.has(n)} />
+                  {printed && labelOf(labels, n) !== "" && <span className="tnum pointer-events-none absolute inset-x-0 text-center text-[12px] text-muted" style={{ top: W * ratioOf(n) + 4 }} data-testid="page-caption" aria-hidden="true">{/^(\d+|[ivxlcdm]+)$/i.test(labelOf(labels, n)) ? `Pág. ${labelOf(labels, n)}` : labelOf(labels, n)}</span>}
                 </div>
               ))}
             </div>
@@ -458,7 +491,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
         {!ready && pdf && <div ref={scroller} className="absolute inset-0 grid place-items-center"><div className="skeleton h-48 w-36 rounded-card" aria-label="Cargando" /></div>}
         {ready && !pdf && (
           <BookMode
-            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect} marks={bm.marks}
+            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect} marks={bm.marks} nameOf={printed ? name : undefined}
             onPage={(n) => { setPage(n); setOffer(0); }}
             onExpired={onExpired}
           />
@@ -470,13 +503,13 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
               <h2 className="font-serif text-xl font-semibold">Marcadores</h2>
               <button type="button" className={tb} onClick={() => setBmOpen(false)} aria-label="Cerrar marcadores"><Icon name="close" /></button>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} /></div>
+            <div className="min-h-0 flex-1 overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} nameOf={printed ? name : undefined} /></div>
           </aside>
         )}
 
         {offer > 0 && ready && (
           <div className="fade-in absolute inset-x-0 z-30 mx-auto flex w-[min(92vw,28rem)] flex-wrap items-center justify-center gap-2 rounded-card border border-line bg-bg p-3 shadow-[var(--shadow-float)]" style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-            <button className="btn btn-primary" onClick={() => goTo(offer)}>Continuar en la página {offer}</button>
+            <button className="btn btn-primary" onClick={() => goTo(offer)}>Continuar en la página {printed ? name(offer) : offer}</button>
             <button className="btn" onClick={() => setOffer(0)}>Empezar desde el principio</button>
           </div>
         )}
@@ -484,11 +517,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
 
       <Sheet open={bmOpen && phoneUi} onClose={() => setBmOpen(false)} label="Marcadores">
         <h2 className="mb-2 font-serif text-2xl font-semibold">Marcadores</h2>
-        <div className="max-h-[60vh] overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} /></div>
+        <div className="max-h-[60vh] overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} nameOf={printed ? name : undefined} /></div>
       </Sheet>
 
       {canDownload && (
-        <DownloadDialog open={dlOpen} onClose={() => setDlOpen(false)} bookTitle={title} slug={slug} pageCount={pageCount} mode="user"
+        <DownloadDialog open={dlOpen} onClose={() => setDlOpen(false)} bookTitle={title} slug={slug} pageCount={pageCount} mode="user" labels={labels}
           current={pdf ? [page, page] : [visible[0] ?? page, visible[visible.length - 1] ?? page]} />
       )}
 

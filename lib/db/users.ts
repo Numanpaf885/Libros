@@ -42,11 +42,12 @@ const fromBookmark = (b: BookmarkRecord): string[] => [b.id, b.user_id, b.book_i
 const toDownload = (r: string[]): DownloadRecord => ({
   id: r[0], actor: r[1] === "admin" ? "admin" : "user", user_id: r[2], username: r[3], display_name: r[4], book_id: r[5], book_title: r[6],
   from_page: num(r[7]), to_page: num(r[8]), page_count: num(r[9]), device: r[10] === "Móvil" ? "Móvil" : "Ordenador",
-  status: r[11] === "completed" || r[11] === "cancelled" || r[11] === "failed" ? r[11] : "started", created_at: r[12], finished_at: r[13] ?? "",
+  status: r[11] === "completed" || r[11] === "cancelled" || r[11] === "failed" || r[11] === "sent" ? r[11] : "started", created_at: r[12], finished_at: r[13] ?? "",
+  method: r[14] === "original" || r[14] === "recorte" || r[14] === "imagenes" ? r[14] : "",
 });
 const fromDownload = (d: DownloadRecord): string[] => [
   d.id, d.actor, d.user_id, d.username, d.display_name, d.book_id, d.book_title, String(d.from_page), String(d.to_page), String(d.page_count),
-  d.device, d.status, d.created_at, d.finished_at,
+  d.device, d.status, d.created_at, d.finished_at, d.method,
 ];
 const toPasskey = (r: string[]): PasskeyRecord => ({
   id: r[0], user_id: r[1], credential_id: r[2], public_key: r[3], counter: num(r[4]), transports: r[5], label: r[6], created_at: r[7], last_used_at: r[8],
@@ -503,6 +504,15 @@ function rememberDownload(rec: DownloadRecord) {
 export async function downloadsAvailable(): Promise<boolean> {
   const s = await snapshot();
   return s.downloadsOk && (await table().hasColumn("users", SHEET_TABS.users.length, "can_download"));
+}
+/** `downloads.method` exists in the sheet (the original-PDF download methods need it to be logged). */
+export async function methodColumnReady(): Promise<boolean> {
+  return table().hasColumn("downloads", SHEET_TABS.downloads.length, "method");
+}
+/** One log row read straight from the sheet (not from the snapshot, which another server instance may have left stale). */
+export async function getDownloadFresh(id: string): Promise<DownloadRecord | undefined> {
+  const r = (await table().list("downloads")).find((x) => x[0] === id);
+  return r ? toDownload(r) : undefined;
 }
 /** The whole log, oldest first (callers sort and filter). */
 export async function listDownloads(): Promise<DownloadRecord[]> {

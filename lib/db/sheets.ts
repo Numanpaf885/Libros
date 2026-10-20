@@ -49,12 +49,14 @@ async function hasHeader(tab: string, index: number, name: string): Promise<bool
   headers.set(key, { at: Date.now(), ok });
   return ok;
 }
-/** Number of columns to read and write for a tab. */
+/** Number of columns to read and write for a tab: the base columns plus the leading run of extra columns whose header exists. */
 async function widthOf(tab: string): Promise<number> {
-  const base = TABS[tab as TabName].length;
-  const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab];
-  if (extra && (await hasHeader(tab, base, extra[0]))) return base + 1;
-  return base;
+  let w = TABS[tab as TabName].length;
+  for (const name of (EXTRA_COLS as Record<string, readonly string[]>)[tab] ?? []) {
+    if (!(await hasHeader(tab, w, name))) break;
+    w++;
+  }
+  return w;
 }
 const fit = (row: string[], w: number) => (row.length > w ? row.slice(0, w) : row);
 

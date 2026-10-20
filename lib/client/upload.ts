@@ -126,7 +126,7 @@ async function uploadMissing(pdf: PageSource, bookId: string, o: FlowOptions) {
  * upload missing pages, finalize. An interruption leaves the row in "uploading" so the same
  * file can be re-selected to continue.
  */
-export async function uploadFlow(o: FlowOptions): Promise<void> {
+export async function uploadFlow(o: FlowOptions): Promise<string> {
   const pdf: PageSource = o.images ? openImages(o.images) : await openPdf(o.file!);
   const fp = o.images ? imagesFingerprint(o.images.items) : fingerprint(o.file!);
   try {
@@ -155,6 +155,7 @@ export async function uploadFlow(o: FlowOptions): Promise<void> {
     const status = o.mode === "new" ? o.status : (recallStatus(bookId) ?? o.status);
     await api(`/api/admin/books/${bookId}/finalize`, "POST", { status });
     try { localStorage.removeItem(fpKey(bookId)); localStorage.removeItem(stKey(bookId)); } catch { /* ignore */ }
+    return bookId;
   } finally {
     await pdf.destroy();
   }

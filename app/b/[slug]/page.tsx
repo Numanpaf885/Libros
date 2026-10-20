@@ -16,7 +16,7 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   // Public presentation fields only. Never keys, prefixes or hashes.
   return (
     <BookClient
-      book={{ slug: book.slug, title: book.title, author: book.author, category: book.category, year: book.year, description: book.description, pageCount: book.page_count }}
+      book={{ slug: book.slug, title: book.title, author: book.author, category: book.category, year: book.year, description: book.description, pageCount: book.page_count, pageLabels: book.page_labels }}
       contact={SITE_CONTACT}
       siteName={SITE_NAME}
     />

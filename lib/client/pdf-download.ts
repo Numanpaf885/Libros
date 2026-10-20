@@ -117,3 +117,15 @@ export function saveBlob(blob: Blob, filename: string) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+/** Starts the browser's download of a URL the server answers with "Content-Disposition: attachment" (nothing is held in memory). */
+export function saveUrl(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}

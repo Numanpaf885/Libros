@@ -19,6 +19,8 @@ interface Props {
   effect: PageEffect;
   /** pages that have a bookmark (a ribbon is drawn on them) */
   marks?: ReadonlySet<number>;
+  /** printed number of a file page, for screen readers (default: the file page itself) */
+  nameOf?: (n: number) => string;
   onPage: (n: number) => void;
   onExpired: () => void;
 }
@@ -63,7 +65,7 @@ function Shade({ r, side, dark = 0.38 }: { r: (e: HTMLDivElement | null) => void
   return <div ref={r} data-shade className="pointer-events-none absolute inset-0" style={{ opacity: 0, background: `linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(0,0,0,${dark}), rgba(0,0,0,0) 55%)` }} />;
 }
 
-const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, marks, onPage, onExpired }, handle) {
+const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, marks, nameOf, onPage, onExpired }, handle) {
   const wide = box.w >= 1024 && box.w > box.h;
   const total = unitCount(pageCount, wide);
   const [unit, setUnit] = useState(() => clamp(unitOf(page, wide), 0, total - 1));
@@ -485,7 +487,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
           {rig}
         </div>
         {pending && <div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto h-1 w-24 overflow-hidden rounded-full page-skeleton" role="status" aria-label="Cargando página" />}
-        <p className="sr-only" aria-live="polite">Página {cur} de {pageCount}</p>
+        <p className="sr-only" aria-live="polite">Página {nameOf ? nameOf(cur) : cur} de {pageCount}</p>
       </div>
       <button type="button" aria-label="Página anterior" title="Página anterior" disabled={unit <= 0} onClick={() => requestTurn(-1)} className={`${arrow} ${arrowBg}`} style={{ left: arrowX }}><Icon name="back" size={26} /></button>
       <button type="button" aria-label="Página siguiente" title="Página siguiente" disabled={unit >= total - 1} onClick={() => requestTurn(1)} className={`${arrow} ${arrowBg}`} style={{ right: arrowX }}><Icon name="next" size={26} /></button>

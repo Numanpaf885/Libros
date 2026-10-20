@@ -63,9 +63,12 @@ const missing = (tab: string) => (process.env.MOCK_MISSING_TABS ?? "").split(","
 const columnMissing = (name: string) => (process.env.MOCK_MISSING_COLUMNS ?? "").split(",").some((c) => c.trim() === name);
 /** Rows of a tab as the real Sheets backend would return/store them (without columns the sheet does not have). */
 function width(tab: string): number {
-  const base = TABS[tab as TabName].length;
-  const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab];
-  return extra && !columnMissing(extra[0]) ? base + 1 : base;
+  let w = TABS[tab as TabName].length;
+  for (const name of (EXTRA_COLS as Record<string, readonly string[]>)[tab] ?? []) {
+    if (columnMissing(name)) break;
+    w++;
+  }
+  return w;
 }
 const out = (tab: string, r: string[]): string[] => {
   const w = width(tab);
@@ -169,8 +172,9 @@ export const mockTable: Table = {
     return true;
   },
   async hasColumn(tab, index, name) {
-    const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab];
-    return !!extra && extra[0] === name && index === TABS[tab as TabName].length && !columnMissing(name);
+    const base = TABS[tab as TabName].length;
+    const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab] ?? [];
+    return extra[index - base] === name && index - base < width(tab) - base;
   },
   async deleteWhere(tab, col, value) {
     op("read", tab, 2);
