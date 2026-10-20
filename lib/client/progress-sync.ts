@@ -44,7 +44,7 @@ export function reportPage(slug: string, page: number) {
   else e.timer ??= setTimeout(() => send(slug), wait);
 }
 /** Send whatever is waiting, now. `beacon` survives the page being closed. */
-export function flushAll() {
+function flushAll() {
   for (const [slug, e] of entries) {
     if (!e.dirty) continue;
     e.dirty = false;

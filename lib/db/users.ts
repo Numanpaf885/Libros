@@ -1,7 +1,8 @@
+import "server-only";
 import { randomUUID } from "node:crypto";
 import { isMock, PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
-import { ALL_BOOKS, type BookmarkRecord, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord, type UserStatus } from "../types";
+import { ALL_BOOKS, type BookmarkRecord, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import type { Table } from "./table";
@@ -14,7 +15,7 @@ const table = (): Table => {
 const TABS = ["users", "user_books", "progress", "passkeys"] as const;
 /** Bookmarks live in a tab that may not exist yet (it is added by `npm run setup-sheet`): everything below copes with that. */
 const BM_RETRY_MS = 5 * 60_000;
-export const BOOKMARK_GAP_MS = 2_000;
+const BOOKMARK_GAP_MS = 2_000;
 
 // ---- row <-> object ----
 const num = (v: string | undefined, d = 0) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -117,10 +118,6 @@ function upsertLocalProgress(s: Snap, p: ProgressRecord) {
   const i = s.progress.findIndex((x) => x.user_id === p.user_id && x.book_id === p.book_id);
   if (i >= 0) s.progress[i] = p;
   else s.progress.push(p);
-}
-/** Drop the cache (tests, or after a failed write). */
-export function resetUsersCache() {
-  store.snap = null;
 }
 
 // ---- reads (no sheet request while the snapshot is fresh) ----
@@ -235,9 +232,6 @@ export async function deleteUserCascade(id: string): Promise<void> {
   s.passkeys = s.passkeys.filter((p) => p.user_id !== id);
   for (const k of [...store.pending.keys()]) if (k.startsWith(`${id}:`)) store.pending.delete(k);
 }
-export async function setStatus(id: string, status: UserStatus): Promise<UserRecord | null> {
-  return modifyUser(id, (u) => ({ ...u, status }));
-}
 
 // ---- passkeys ----
 export async function addPasskey(p: PasskeyRecord): Promise<void> {
@@ -333,10 +327,10 @@ function retryLater() {
   retryTimer = setTimeout(() => { retryTimer = null; void drainProgress(); }, 30_000);
   retryTimer.unref?.();
 }
-export const pendingProgressCount = () => store.pending.size;
+
 
 // ---- bookmarks ----
-export const BOOKMARK_LIMIT = 100;
+const BOOKMARK_LIMIT = 100;
 /** Whether the tab exists (false: the reader keeps its bookmarks on the device). */
 export async function bookmarksAvailable(): Promise<boolean> {
   return (await snapshot()).bookmarksOk;

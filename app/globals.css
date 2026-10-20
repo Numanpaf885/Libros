@@ -65,7 +65,6 @@
   --font-serif: var(--font-literata), Literata, Georgia, serif;
   --radius-ctl: 10px;
   --radius-card: 14px;
-  --radius-sheet: 16px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -129,7 +128,6 @@ input, textarea { caret-color: var(--accent); }
   .btn-primary { @apply border-accent bg-accent text-accent-fg; --spin: var(--accent-fg); }
   .btn-danger { @apply border-danger text-danger; --spin: var(--danger); }
   .btn-ghost { @apply border-transparent bg-transparent; }
-  .btn-link { @apply min-h-0 border-transparent bg-transparent px-1 py-0 text-accent; }
   .btn-sm { @apply min-h-8 px-3 text-[13px]; }
   .btn-icon { @apply min-h-10 min-w-10 rounded-full px-0; isolation: isolate; }
   /* the round hover background fades in behind the icon whatever the button's own background is */
@@ -143,7 +141,6 @@ input, textarea { caret-color: var(--accent); }
     .btn-ghost:hover:not(:disabled):not([aria-busy="true"]):not(:active) { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: transparent; box-shadow: none; transform: none; }
     .btn.btn-icon:hover:not(:disabled):not([aria-busy="true"]):not(:active) { transform: none; box-shadow: none; border-color: transparent; background-color: transparent; }
     .btn.btn-icon:hover:not(:disabled):not([aria-busy="true"])::before { opacity: 0.09; }
-    .btn-link:hover:not(:disabled) { background: transparent; box-shadow: none; transform: none; }
     .btn:hover:not(:disabled) .nudge { transform: translateX(3px); }
   }
   /* Press: a quick shrink and a springy return, on every button (icon buttons and cards too). */

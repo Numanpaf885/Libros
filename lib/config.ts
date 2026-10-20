@@ -32,7 +32,6 @@ export const SETUP_CODE_TTL_MS = 72 * 60 * 60 * 1000;
 export const SETUP_MAX_ATTEMPTS = 5;
 export const LOGIN_MAX_FAILS = 5;
 export const LOGIN_LOCK_MS = 15 * 60_000;
-export const PROGRESS_MIN_INTERVAL_MS = 20_000;
 /** The server never writes the same user+book to the sheet more often than this, whatever the clients send. */
 export const PROGRESS_WRITE_GAP_MS = 15_000;
 

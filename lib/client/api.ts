@@ -14,7 +14,7 @@ const ES: Record<string, string> = {
   "Title does not match": "El título no coincide",
   "Request failed": "No se pudo completar la solicitud",
 };
-export const tr = (m: string) => ES[m] ?? m;
+const tr = (m: string) => ES[m] ?? m;
 
 export async function api<T = unknown>(url: string, method = "GET", body?: unknown): Promise<T> {
   const res = await fetch(url, {

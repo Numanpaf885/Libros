@@ -7,7 +7,7 @@ import { cookieFrom } from "./admin";
 
 const RENEW_AFTER_S = 24 * 60 * 60;
 
-export async function signUser(user: Pick<UserRecord, "id" | "session_version">): Promise<string> {
+async function signUser(user: Pick<UserRecord, "id" | "session_version">): Promise<string> {
   return new SignJWT({ role: "reader", sv: user.session_version })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
@@ -15,7 +15,7 @@ export async function signUser(user: Pick<UserRecord, "id" | "session_version">)
     .setExpirationTime(`${USER_TTL_S}s`)
     .sign(sessionSecret());
 }
-export function setUserCookie(res: NextResponse, token: string) {
+function setUserCookie(res: NextResponse, token: string) {
   res.cookies.set(USER_COOKIE, token, { httpOnly: true, secure: COOKIE_SECURE, sameSite: "lax", path: "/", maxAge: USER_TTL_S });
 }
 export function clearUserCookie(res: NextResponse) {

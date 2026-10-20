@@ -4,14 +4,14 @@ import { COOKIE_SECURE, sessionSecret } from "../config";
 import { cookieFrom } from "./admin";
 import { requestHost } from "./origin";
 
-export const PASSKEY_COOKIE = "br_pk";
+const PASSKEY_COOKIE = "br_pk";
 const CHALLENGE_TTL_S = 300;
 
 /**
  * Hosts passkeys may be used on: localhost when developing; in production the project's production domain
  * (Vercel system variable, no protocol) plus anything listed in APP_ORIGIN (comma separated, with or without https://).
  */
-export function allowedHosts(): string[] {
+function allowedHosts(): string[] {
   const out: string[] = [];
   const add = (v: string | undefined) => {
     for (const part of (v ?? "").split(",")) {

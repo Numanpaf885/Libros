@@ -54,3 +54,9 @@ next-env.d.ts
 *_key.json
 google-key*.json
 credentials*.json
+
+# perf measurements
+/.perf/
+
+# Impeccable design tooling (local only)
+/.impeccable/

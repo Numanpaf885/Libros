@@ -1,3 +1,4 @@
+import "server-only";
 import { isMock } from "../config";
 import { assertSafeConfig } from "../safety";
 import * as mock from "./mock";
@@ -17,4 +18,4 @@ export const storage = (): Storage => {
   return isMock() ? mock : r2;
 };
 
-export { GET_TTL_S, OBJECT_RE, PREFIX_RE, PUT_TTL_S, REPLACE_SLUG } from "./constants";
+export { GET_TTL_S, OBJECT_RE } from "./constants";

@@ -9,7 +9,7 @@ export function generateCode(): string {
   return s;
 }
 /** Case-insensitive; whitespace is ignored. Hyphens are kept (custom codes may contain them). */
-export const normalizeCode = (c: string) => c.toUpperCase().replace(/\s+/g, "");
+const normalizeCode = (c: string) => c.toUpperCase().replace(/\s+/g, "");
 /** What a reader typed, then the same without hyphens (generated codes are shown as XXXXX-XXXXX). */
 export function codeCandidates(c: string): string[] {
   const n = normalizeCode(c);
@@ -25,7 +25,7 @@ export const hashesOf = (c: string): string[] => [hashCode(c), legacyHashCode(c)
 export const formatCode = (c: string) => `${c.slice(0, 5)}-${c.slice(5)}`;
 
 /** Admin-chosen codes: 6-32 characters, letters, digits and hyphens. Returns the uppercased code or null. */
-export const CUSTOM_CODE_RE = /^[A-Za-z0-9-]{6,32}$/;
+const CUSTOM_CODE_RE = /^[A-Za-z0-9-]{6,32}$/;
 export function parseCustomCode(raw: string): string | null {
   const t = raw.trim();
   return CUSTOM_CODE_RE.test(t) ? t.toUpperCase() : null;
@@ -40,5 +40,5 @@ export function generateSetupCode(): string {
 }
 export const formatSetupCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
 /** Whatever the person typed (spaces, hyphens, lower case) -> the 12 plain characters. */
-export const normalizeSetupCode = (c: string) => c.toUpperCase().replace(/[\s-]+/g, "");
+const normalizeSetupCode = (c: string) => c.toUpperCase().replace(/[\s-]+/g, "");
 export const hashSetupCode = (c: string) => hashCode(normalizeSetupCode(c));

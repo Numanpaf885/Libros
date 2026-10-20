@@ -51,10 +51,6 @@ export function peekPage(slug: string, n: number): ImageBitmap | undefined {
   return cache.get(`${slug}:${n}`)?.bmp;
 }
 
-/** Warm the cache. */
-export function prefetch(slug: string, pages: number[], pageCount: number) {
-  for (const n of pages) if (n >= 1 && n <= pageCount) loadPage(slug, n).catch(() => {});
-}
 
 /** Frees decoded pages of this book that `keep` rejects. */
 export function trimPages(slug: string, keep: (n: number) => boolean) {

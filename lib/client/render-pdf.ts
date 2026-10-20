@@ -4,7 +4,7 @@ const MAX_W = 1400;
 export const COVER_W = 480;
 const QUALITY = 0.8;
 /** Largest single read from the local file. pdf.js may ask for a longer range; we assemble it from reads this size. */
-export const READ_CHUNK = 64 * 1024;
+const READ_CHUNK = 64 * 1024;
 
 async function readRange(file: File, begin: number, end: number): Promise<Uint8Array> {
   const out = new Uint8Array(end - begin);

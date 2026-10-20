@@ -1,3 +1,4 @@
+import "server-only";
 /** Minimal row store. Rows are string[] in column order (header row excluded). */
 export interface Table {
   list(tab: string): Promise<string[][]>;

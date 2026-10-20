@@ -1,3 +1,4 @@
+import "server-only";
 import { google, type sheets_v4 } from "googleapis";
 import { requireEnv } from "../config";
 import { TABS, type Table, type TabName } from "./table";
@@ -171,33 +172,4 @@ async function deleteRows(tab: string, idx: number[]): Promise<number> {
     }));
   await call(() => api().spreadsheets.batchUpdate({ spreadsheetId: sheetId(), requestBody: { requests } }));
   return idx.length;
-}
-
-/** Used by scripts/setup-sheet.ts */
-export async function ensureTabs(): Promise<string[]> {
-  const meta = await api().spreadsheets.get({ spreadsheetId: sheetId(), fields: "sheets.properties.title" });
-  const have = new Set(meta.data.sheets?.map((s) => s.properties?.title));
-  const created: string[] = [];
-  for (const tab of Object.keys(TABS) as TabName[]) {
-    if (!have.has(tab)) {
-      await api().spreadsheets.batchUpdate({
-        spreadsheetId: sheetId(),
-        requestBody: { requests: [{ addSheet: { properties: { title: tab } } }] },
-      });
-      created.push(tab);
-    }
-    const head = await api().spreadsheets.values.get({
-      spreadsheetId: sheetId(),
-      range: `${tab}!A1:${lastCol(tab)}1`,
-    });
-    if (!head.data.values?.length) {
-      await api().spreadsheets.values.update({
-        spreadsheetId: sheetId(),
-        range: `${tab}!A1:${lastCol(tab)}1`,
-        valueInputOption: "RAW",
-        requestBody: { values: [[...TABS[tab]]] },
-      });
-    }
-  }
-  return created;
 }

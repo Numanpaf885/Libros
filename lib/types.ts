@@ -32,7 +32,7 @@ export interface AdminUser {
 }
 
 /** Public-safe projections: never include storage_prefix, cover_path or hashes. */
-export interface PublicBook {
+interface PublicBook {
   slug: string;
   title: string;
   description: string;

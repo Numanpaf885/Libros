@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 
-export const BCRYPT_COST = 12;
+const BCRYPT_COST = 12;
 export const hashPassword = (pw: string) => bcrypt.hash(pw, BCRYPT_COST);
 export const verifyPassword = (pw: string, hash: string) => bcrypt.compare(pw, hash);
 

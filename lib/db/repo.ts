@@ -1,7 +1,8 @@
+import "server-only";
 import { randomUUID } from "node:crypto";
 import { isMock, SHEET_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
-import type { AccessCode, AdminUser, Book, BookStatus } from "../types";
+import type { AccessCode, AdminUser, Book } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import { deleteBookmarksForBook } from "./users";
@@ -128,4 +129,3 @@ export async function getAdmin(username: string): Promise<AdminUser | null> {
   return r ? { username: r[0], password_hash: r[1] } : null;
 }
 
-export type { BookStatus };

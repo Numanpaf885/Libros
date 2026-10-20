@@ -28,7 +28,7 @@ Open <http://localhost:3000/admin>. Mock mode seeds one admin: username `admin`,
 
 1. Create a new, empty Google Sheet. Copy its ID from the URL: `https://docs.google.com/spreadsheets/d/<THIS_PART>/edit` → `SHEET_ID`.
 2. Click **Share**, paste the service account email (`client_email`), give it **Editor** access, and untick "notify".
-3. Create the tabs automatically (after step 5 below, so your env vars exist): `npm run setup-sheet`. It creates any missing tab (`books`, `access_codes`, `admins`) and any missing header name. On an existing tab it only appends missing headers at the end of row 1: it never reorders columns or touches your rows.
+3. Create the tabs automatically (after step 5 below, so your env vars exist): `npm run setup-sheet`. It creates any missing tab (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`) and any missing header name. On an existing tab it only appends missing headers at the end of row 1: it never reorders columns or touches your rows.
 4. Add yourself as admin. Run `npm run hash-password`, type a password (10+ characters), and copy the `$2b$12$…` hash it prints. In the `admins` tab, row 2: column A = username, column B = that hash.
    - If Sheets turns the hash into something odd, format column B as **Plain text** first.
    - The sheet holds only hashes: password hashes and code hashes. Do not share the Sheet with anyone you do not trust.
