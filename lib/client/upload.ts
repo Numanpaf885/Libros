@@ -1,5 +1,6 @@
 "use client";
 import { api } from "./api";
+import { imagesFingerprint, openImages, type ImagePlan } from "./images";
 import { COVER_W, openPdf, type OpenPdf } from "./render-pdf";
 
 const BATCH = 20; // presigned URLs requested per call
@@ -11,8 +12,13 @@ export interface Progress {
   etaSec: number | null;
 }
 export type UploadMode = "new" | "resume" | "replace";
+/** A source of pages: an opened PDF, or photos (with an optional separate cover). */
+type PageSource = OpenPdf & { renderCover?: (maxWidth: number) => Promise<Blob> };
 export interface FlowOptions {
-  file: File;
+  /** The PDF. Omit it when uploading `images`. */
+  file?: File;
+  /** Images instead of a PDF: in their final order, with the cover. */
+  images?: ImagePlan;
   mode: UploadMode;
   /** new: title/description. resume: the uploading row's id. replace: the live book's id. */
   bookId?: string;
@@ -27,8 +33,8 @@ const fpKey = (id: string) => `br:fp:${id}`;
 const fingerprint = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
 const stKey = (id: string) => `br:status:${id}`;
 // Remembered in this browser so a resumed upload finishes with the status chosen at the start.
-const remember = (id: string, f: File, status: string) => {
-  try { localStorage.setItem(fpKey(id), fingerprint(f)); localStorage.setItem(stKey(id), status); } catch { /* ignore */ }
+const remember = (id: string, fp: string, status: string) => {
+  try { localStorage.setItem(fpKey(id), fp); localStorage.setItem(stKey(id), status); } catch { /* ignore */ }
 };
 const recall = (id: string) => { try { return localStorage.getItem(fpKey(id)); } catch { return null; } };
 const recallStatus = (id: string): "published" | "draft" | null => {
@@ -74,7 +80,7 @@ async function put(src: UrlSource, page: number, blob: Blob, signal: AbortSignal
 }
 
 /** Renders `pdf` page by page and uploads whatever the server doesn't already have. */
-async function uploadMissing(pdf: OpenPdf, bookId: string, o: FlowOptions) {
+async function uploadMissing(pdf: PageSource, bookId: string, o: FlowOptions) {
   const st = await api<{ page_count: number; pages: number[]; cover: boolean }>(`/api/admin/books/${bookId}/upload-state`);
   const have = new Set(st.pages);
   const todo: number[] = [];
@@ -101,7 +107,7 @@ async function uploadMissing(pdf: OpenPdf, bookId: string, o: FlowOptions) {
     if (failure) break;
     while (inflight.size >= PARALLEL) await Promise.race(inflight); // backpressure: render only when a slot is free
     if (failure) break;
-    const blob = await pdf.render(page === 0 ? 1 : page, page === 0 ? COVER_W : undefined);
+    const blob = page === 0 && pdf.renderCover ? await pdf.renderCover(COVER_W) : await pdf.render(page === 0 ? 1 : page, page === 0 ? COVER_W : undefined);
     const p: Promise<void> = put(src, page, blob, o.signal)
       .then(() => {
         if (page > 0) { done++; sessionDone++; report(); }
@@ -121,28 +127,29 @@ async function uploadMissing(pdf: OpenPdf, bookId: string, o: FlowOptions) {
  * file can be re-selected to continue.
  */
 export async function uploadFlow(o: FlowOptions): Promise<void> {
-  const pdf = await openPdf(o.file);
+  const pdf: PageSource = o.images ? openImages(o.images) : await openPdf(o.file!);
+  const fp = o.images ? imagesFingerprint(o.images.items) : fingerprint(o.file!);
   try {
     let bookId: string;
     if (o.mode === "resume") {
       bookId = o.bookId!;
       const row = await api<{ page_count: number }>(`/api/admin/books/${bookId}/upload-state`);
-      const fp = recall(bookId);
-      if (row.page_count !== pdf.pageCount || (fp && fp !== fingerprint(o.file))) {
+      const saved = recall(bookId);
+      if (row.page_count !== pdf.pageCount || (saved && saved !== fp)) {
         throw new Error("This is not the file this upload started with.");
       }
     } else if (o.mode === "replace") {
       const r = await api<{ book: { id: string; page_count: number } }>(`/api/admin/books/${o.bookId}/replace`, "POST", { page_count: pdf.pageCount });
       bookId = r.book.id;
-      const fp = recall(bookId);
-      if (r.book.page_count !== pdf.pageCount || (fp && fp !== fingerprint(o.file))) {
+      const saved = recall(bookId);
+      if (r.book.page_count !== pdf.pageCount || (saved && saved !== fp)) {
         throw new Error("A replacement upload is already in progress for a different file. Discard it first.");
       }
-      remember(bookId, o.file, o.status);
+      remember(bookId, fp, o.status);
     } else {
       const r = await api<{ book: { id: string } }>("/api/admin/books", "POST", { ...o.meta, page_count: pdf.pageCount });
       bookId = r.book.id;
-      remember(bookId, o.file, o.status);
+      remember(bookId, fp, o.status);
     }
     await uploadMissing(pdf, bookId, o);
     const status = o.mode === "new" ? o.status : (recallStatus(bookId) ?? o.status);

@@ -30,6 +30,11 @@ const P = {
   bookmarks: "M9 3h9v14l-4.5-3.5L9 17zM5 7v14l4.5-3.5",
   edit: "M5 19l1-4 9.5-9.5 3 3L9 18zM13.5 7.5l3 3",
   trash: "M5 7h14M10 4h4M7 7l1 13h8l1-13M10 11v5M14 11v5",
+  download: "M12 4v11m0 0l-4-4m4 4l4-4M5 19h14",
+  rotate: "M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 4.5v4h-4",
+  grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
+  star: "M12 4l2.4 5 5.6.7-4.1 3.8 1.1 5.5L12 16.3 7 19l1.1-5.5L4 9.7 9.6 9z",
+  image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9.5h.01",
   more: "M4.5 12a1 1 0 102 0 1 1 0 10-2 0M11 12a1 1 0 102 0 1 1 0 10-2 0M17.5 12a1 1 0 102 0 1 1 0 10-2 0",
 } as const;
 export type IconName = keyof typeof P;

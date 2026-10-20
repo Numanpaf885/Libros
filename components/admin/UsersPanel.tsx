@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
 import { fmtDate } from "@/lib/client/format";
 import type { AdminBook } from "@/lib/types";
+import { DownloadHistory } from "./DownloadsPanel";
 
 interface UserView {
   id: string; username: string; display_name: string; status: "pending" | "active" | "disabled";
@@ -13,6 +14,7 @@ interface UserView {
   all_books: boolean; assigned: string[]; via_code: string[];
   progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string }[];
   passkeys: number;
+  can_download: boolean;
 }
 interface IssuedCode { username: string; display_name: string; code: string; expires_at: string }
 
@@ -68,9 +70,9 @@ function CodeCard({ issued, onClose, heading }: { issued: IssuedCode; onClose: (
   );
 }
 
-function UserRow({ u, books, reload, issue }: { u: UserView; books: AdminBook[]; reload: () => void; issue: (c: IssuedCode, heading: string) => void }) {
+function UserRow({ u, books, reload, issue, dl }: { u: UserView; books: AdminBook[]; reload: () => void; issue: (c: IssuedCode, heading: string) => void; dl: boolean }) {
   const toast = useToast();
-  const [panel, setPanel] = useState<"books" | null>(null);
+  const [panel, setPanel] = useState<"books" | "history" | null>(null);
   const [choice, setChoice] = useState<Choice>({ all: u.all_books, ids: u.assigned });
   const [busy, setBusy] = useState(false);
   const [askReset, setAskReset] = useState(false);
@@ -101,6 +103,15 @@ function UserRow({ u, books, reload, issue }: { u: UserView; books: AdminBook[];
           <dt className="text-sm text-muted">Libros asignados</dt>
           <dd>{u.all_books ? "Todos los libros" : u.assigned.length ? u.assigned.map(title).join(" · ") : "Ninguno"}{u.via_code.length > 0 && <span className="text-muted"> · con código: {u.via_code.map(title).join(" · ")}</span>}</dd>
         </div>
+        {dl && (
+          <div className="sm:col-span-2">
+            <label className="flex min-h-11 w-fit items-center gap-3 text-[15px]">
+              <input type="checkbox" role="switch" className="h-5 w-5" checked={u.can_download} disabled={busy} aria-label={`Puede descargar PDF: ${u.display_name}`}
+                onChange={(e) => run(async () => { await api(`/api/admin/users/${u.id}`, "PATCH", { can_download: e.target.checked }); toast("ok", e.target.checked ? "Ahora puede descargar PDF" : "Ya no puede descargar PDF"); reload(); })} />
+              Puede descargar PDF
+            </label>
+          </div>
+        )}
         <div className="sm:col-span-2">
           <dt className="text-sm text-muted">Progreso de lectura</dt>
           <dd>
@@ -116,6 +127,7 @@ function UserRow({ u, books, reload, issue }: { u: UserView; books: AdminBook[];
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button className="btn btn-sm" onClick={() => { setChoice({ all: u.all_books, ids: u.assigned }); setPanel(panel === "books" ? null : "books"); }}>Editar libros</button>
+        {dl && <button className="btn btn-sm" onClick={() => setPanel(panel === "history" ? null : "history")}>Historial de descargas</button>}
         <button className="btn btn-sm" onClick={() => setAskReset(true)}>Restablecer contraseña</button>
         {u.status !== "pending" && (
           <button className="btn btn-sm" disabled={busy} onClick={() => run(async () => { await api(`/api/admin/users/${u.id}`, "PATCH", { disabled: u.status === "active" }); toast("ok", u.status === "active" ? "Usuario desactivado" : "Usuario activado"); reload(); })}>
@@ -124,6 +136,8 @@ function UserRow({ u, books, reload, issue }: { u: UserView; books: AdminBook[];
         )}
         <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
       </div>
+
+      {panel === "history" && <div className="mt-4 border-t border-line pt-4"><DownloadHistory filter={{ user: u.id }} /></div>}
 
       {panel === "books" && (
         <form className="mt-4 max-w-md space-y-3 border-t border-line pt-4" onSubmit={(e) => {
@@ -154,6 +168,7 @@ function UserRow({ u, books, reload, issue }: { u: UserView; books: AdminBook[];
 export default function UsersPanel({ books }: { books: AdminBook[] }) {
   const toast = useToast();
   const [users, setUsers] = useState<UserView[] | null>(null);
+  const [dl, setDl] = useState(false);
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   const [issued, setIssued] = useState<{ code: IssuedCode; heading: string } | null>(null);
@@ -165,7 +180,7 @@ export default function UsersPanel({ books }: { books: AdminBook[] }) {
 
   useEffect(() => {
     let dead = false;
-    api<{ users: UserView[] }>("/api/admin/users").then((r) => { if (!dead) setUsers(r.users); }).catch((e) => { if (!dead) toast("error", errText(e)); });
+    api<{ users: UserView[]; downloads_available?: boolean }>("/api/admin/users").then((r) => { if (!dead) { setUsers(r.users); setDl(!!r.downloads_available); } }).catch((e) => { if (!dead) toast("error", errText(e)); });
     return () => { dead = true; };
   }, [version, toast]);
 
@@ -209,7 +224,7 @@ export default function UsersPanel({ books }: { books: AdminBook[] }) {
         <div className="card px-6 py-12 text-center"><h2 className="text-3xl">Todavía no hay usuarios</h2><p className="mt-2 text-muted">Crea el primero arriba y compárteles el código de activación.</p></div>
       ) : (
         <ul className="space-y-4" aria-label="Usuarios">
-          {users.map((u) => <UserRow key={u.id} u={u} books={books} reload={reload} issue={(c, h) => setIssued({ code: c, heading: h })} />)}
+          {users.map((u) => <UserRow key={u.id} u={u} books={books} dl={dl} reload={reload} issue={(c, h) => setIssued({ code: c, heading: h })} />)}
         </ul>
       )}
     </div>

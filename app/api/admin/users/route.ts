@@ -2,7 +2,7 @@ import { z } from "zod";
 import { formatSetupCode, generateSetupCode, hashSetupCode } from "@/lib/auth/codes";
 import { adminUserViews } from "@/lib/auth/admin-users";
 import { listBooks } from "@/lib/db/repo";
-import { createUser, getUserByUsername, listUsers } from "@/lib/db/users";
+import { createUser, downloadsAvailable, getUserByUsername, listUsers } from "@/lib/db/users";
 import { guardAdmin, guardOrigin, jsonError, ok, parseBody, safe } from "@/lib/http";
 import { SETUP_CODE_TTL_MS } from "@/lib/config";
 import { isReplacement } from "@/lib/books";
@@ -20,7 +20,7 @@ export const GET = safe(async (req: Request) => {
   if (denied) return denied;
   const books = (await listBooks()).filter((b) => !isReplacement(b));
   const users = (await listUsers()).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  return ok({ users: await adminUserViews(users, books) });
+  return ok({ users: await adminUserViews(users, books), downloads_available: await downloadsAvailable() });
 });
 
 // The plain activation code exists only in this response; the sheet keeps its HMAC.

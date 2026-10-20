@@ -61,10 +61,10 @@ export async function setup() {
   return { api, b1, b2, code: typeof c0 === "string" ? c0 : c0?.code ?? c0?.plain, activateStatus: act.status };
 }
 
-export async function context(browser, { w, h, dark = false, reduced = false, touch = true, signedIn = false, noClip = true, saved = true, books = [] }) {
+export async function context(browser, { w, h, dark = false, reduced = false, touch = true, signedIn = false, noClip = true, saved = true, books = [], userAgent }) {
   const c = await browser.newContext({
     viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light", reducedMotion: reduced ? "reduce" : "no-preference",
-    deviceScaleFactor: touch ? 2 : 1, hasTouch: touch, isMobile: touch && w < 800,
+    deviceScaleFactor: touch ? 2 : 1, hasTouch: touch, isMobile: touch && w < 800, ...(userAgent ? { userAgent } : {}),
   });
   await c.addInitScript(({ noClip, saved, books, dark }) => {
     try {

@@ -30,3 +30,15 @@ export function cookieFrom(req: Request, name: string): string | undefined {
 export async function isAdminRequest(req: Request): Promise<boolean> {
   return verifyAdminToken(cookieFrom(req, ADMIN_COOKIE));
 }
+
+/** The signed-in admin's username (the token subject), or null. */
+export async function adminUsername(req: Request): Promise<string | null> {
+  const token = cookieFrom(req, ADMIN_COOKIE);
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionSecret(), { algorithms: ["HS256"] });
+    return payload.role === "admin" && typeof payload.sub === "string" ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}

@@ -9,6 +9,7 @@ import { loadPage, Unauthorized } from "@/lib/client/pages";
 import { realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
 import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
 import BookmarksPanel from "./BookmarksPanel";
+import DownloadDialog from "@/components/download/DownloadDialog";
 import { flushBook, reportPage } from "@/lib/client/progress-sync";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
@@ -22,6 +23,8 @@ interface Props {
   initialPage: number;
   /** A saved page to OFFER ("Continuar en la página X"); 0 for none. */
   offer: number;
+  /** signed-in reader with the download permission (the server checks again on every request) */
+  canDownload?: boolean;
   onClose: () => void;
   onExpired: () => void;
 }
@@ -50,7 +53,7 @@ function initialMode(): ReadMode {
   return isPhone() ? "book" : "pdf"; // Book mode on phones, PDF mode on desktop, until the reader picks one
 }
 
-export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, onClose, onExpired }: Props) {
+export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, onClose, onExpired }: Props) {
   const lsKey = `br:last:${slug}`;
   const [mode, setModeState] = useState<ReadMode>(initialMode);
   const [reduced] = useState(reducedMotion);
@@ -74,6 +77,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const phoneUi = usePhone(767);
   const bm = useBookmarks(slug, pageCount);
   const [bmOpen, setBmOpen] = useState(false);
+  const [dlOpen, setDlOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLDivElement>(null);
   const renders = useRef(0);
@@ -174,6 +178,10 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     setRatios((m) => (m[n] !== undefined || (e0 !== null && Math.abs(r - e0) / e0 < 0.005) ? m : { ...m, [n]: r }));
   }, []);
   const pdf = mode === "pdf";
+  // Book mode: the pages on screen (a spread on wide screens, one page otherwise). The same rule as BookMode's.
+  const wide = !pdf && box.w >= 1024 && box.w > box.h;
+  const visible = pdf ? [page] : realPages(unitOf(page, wide), wide, pageCount);
+  const shownLabel = pdf || visible.length < 2 ? String(page) : `${visible[0]}–${visible[1]}`;
   const ready = est !== null && (pdf ? size.w > 0 : box.w > 0);
 
   // ---- sizes ----
@@ -285,6 +293,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     const stop = (e: Event) => e.preventDefault();
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ["s", "p"].includes(e.key.toLowerCase())) { e.preventDefault(); return; }
+      if (dlOpen) return; // the download dialog is open: keys belong to it
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.getAttribute("role") === "radio")) return;
       if (e.key === "ArrowRight" || (!pdf && e.key === "PageDown")) { e.preventDefault(); turn(1); }
@@ -370,6 +379,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
           )}
         </div>
       ))}
+      {canDownload && (inMenu ? (
+        <button type="button" className="flex min-h-11 w-full items-center gap-3 rounded-ctl px-3 text-left text-[15px] hover:bg-fg/10" onClick={() => { setMenu(false); setDlOpen(true); }} data-testid="download-open"><Icon name="download" size={18} />Descargar PDF</button>
+      ) : (
+        <button type="button" className={`${tb} min-[1100px]:w-auto! min-[1100px]:px-3! min-[1100px]:gap-2`} onClick={() => setDlOpen(true)} aria-label="Descargar PDF" title="Descargar PDF" data-testid="download-open"><Icon name="download" /><span className="hidden text-sm min-[1100px]:inline">Descargar PDF</span></button>
+      ))}
       <button type="button" className={tb} onClick={toggleFull} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} title={full ? "Salir de pantalla completa" : "Pantalla completa"}><Icon name={full ? "shrink" : "expand"} /></button>
       <ThemeToggle className="min-h-11! min-w-11! border-transparent bg-transparent!" />
     </>
@@ -395,12 +409,13 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
               <label htmlFor="pagina" className="sr-only">Ir a la página</label>
               <input
                 id="pagina" inputMode="numeric" autoComplete="off" enterKeyHint="go" aria-describedby="pagina-msg" aria-invalid={!!pageMsg}
-                value={editing ?? String(page)}
-                onFocus={(e) => { setEditing(String(page)); e.currentTarget.select(); }}
+                value={editing ?? shownLabel} aria-label={!pdf && visible.length === 2 ? `Páginas ${visible[0]} y ${visible[1]} de ${pageCount}` : undefined}
+                onFocus={(e) => { setEditing(String(pdf ? page : (visible[0] ?? page))); e.currentTarget.select(); }}
                 onChange={(e) => setEditing(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
                 onBlur={() => { setEditing(null); }}
                 onKeyDown={(e) => { if (e.key === "Escape") { setEditing(null); setPageMsg(""); (e.currentTarget as HTMLInputElement).blur(); } }}
-                className="field tnum min-h-11 w-12! px-1! py-1! text-center sm:w-14!"
+                className={`field tnum min-h-11 px-1! py-1! text-center ${shownLabel.length > 3 ? "" : "w-12! sm:w-14!"}`}
+                style={shownLabel.length > 3 ? { width: `${shownLabel.length + 2}ch` } : undefined}
               />
               <span className="tnum whitespace-nowrap text-muted">/ {pageCount}</span>
               <p id="pagina-msg" role="alert" className={`absolute right-0 top-full z-10 mt-1 w-max max-w-[16rem] rounded-ctl border border-danger bg-bg px-2.5 py-1.5 text-[13px] text-danger sm:left-0 sm:right-auto ${pageMsg ? "" : "hidden"}`}>{pageMsg}</p>
@@ -471,6 +486,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
         <h2 className="mb-2 font-serif text-2xl font-semibold">Marcadores</h2>
         <div className="max-h-[60vh] overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} /></div>
       </Sheet>
+
+      {canDownload && (
+        <DownloadDialog open={dlOpen} onClose={() => setDlOpen(false)} bookTitle={title} slug={slug} pageCount={pageCount} mode="user"
+          current={pdf ? [page, page] : [visible[0] ?? page, visible[visible.length - 1] ?? page]} />
+      )}
 
       {phase !== "off" && <OpeningBook slug={slug} title={title} progress={loadFrac} out={phase === "out"} reduced={reduced} />}
     </div>

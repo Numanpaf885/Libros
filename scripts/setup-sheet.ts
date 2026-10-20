@@ -1,5 +1,5 @@
 // Usage: npm run setup-sheet
-// Creates any missing tabs (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`) and any missing header names.
+// Creates any missing tabs (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`, `downloads`) and any missing header names.
 // It never reorders existing columns and never touches data rows: missing headers (for example
 // author, category and year on an older `books` tab) are only ever appended at the END of row 1.
 // Reads GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SHEET_ID from .env.local / the environment.
@@ -10,12 +10,15 @@ const TABS: Record<string, string[]> = {
   access_codes: ["id", "book_id", "code_hash", "label", "created_at", "expires_at", "revoked"],
   admins: ["username", "password_hash"],
   // Reader accounts (added later; the tabs above are never modified).
-  users: ["id", "username", "display_name", "password_hash", "status", "setup_code_hash", "setup_code_expires_at", "setup_attempts", "failed_logins", "locked_until", "session_version", "created_at", "last_login_at"],
+  // can_download (appended at the END, later) is the per-user "may download PDF" switch.
+  users: ["id", "username", "display_name", "password_hash", "status", "setup_code_hash", "setup_code_expires_at", "setup_attempts", "failed_logins", "locked_until", "session_version", "created_at", "last_login_at", "can_download"],
   user_books: ["user_id", "book_id", "source", "code_id", "granted_at"],
   progress: ["user_id", "book_id", "page", "updated_at"],
   passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
   // Bookmarks ("Marcadores")
   bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
+  // Download log (snapshots of user / book names, so it stays readable after renames and deletions)
+  downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
 };
 
 function need(name: string): string {

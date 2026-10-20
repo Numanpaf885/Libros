@@ -17,6 +17,7 @@ export interface AdminUserView {
   via_code: string[];
   progress: { book_id: string; title: string; page: number; page_count: number; updated_at: string }[];
   passkeys: number;
+  can_download: boolean;
 }
 
 /** What the admin sees about each user: never hashes, codes or key material. */
@@ -36,6 +37,7 @@ export async function adminUserViews(users: UserRecord[], books: Book[]): Promis
         .filter((p) => p.user_id === u.id && byId.has(p.book_id))
         .map((p) => ({ book_id: p.book_id, title: byId.get(p.book_id)!.title, page: p.page, page_count: byId.get(p.book_id)!.page_count, updated_at: p.updated_at })),
       passkeys: (await passkeysOf(u.id)).length,
+      can_download: u.can_download,
     };
   }));
 }

@@ -2,10 +2,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { isMock, PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
-import { ALL_BOOKS, type BookmarkRecord, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
+import { ALL_BOOKS, type BookmarkRecord, type DownloadRecord, type DownloadStatus, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
-import type { Table } from "./table";
+import { TABS as SHEET_TABS, type Table } from "./table";
 
 const table = (): Table => {
   assertSafeConfig();
@@ -15,6 +15,8 @@ const table = (): Table => {
 const TABS = ["users", "user_books", "progress", "passkeys"] as const;
 /** Bookmarks live in a tab that may not exist yet (it is added by `npm run setup-sheet`): everything below copes with that. */
 const BM_RETRY_MS = 5 * 60_000;
+/** Same idea for the `downloads` tab (also added by `npm run setup-sheet`). */
+const DL_RETRY_MS = 5 * 60_000;
 const BOOKMARK_GAP_MS = 2_000;
 
 // ---- row <-> object ----
@@ -24,10 +26,12 @@ const toUser = (r: string[]): UserRecord => ({
   status: r[4] === "active" ? "active" : r[4] === "disabled" ? "disabled" : "pending",
   setup_code_hash: r[5], setup_code_expires_at: r[6], setup_attempts: num(r[7]), failed_logins: num(r[8]),
   locked_until: r[9], session_version: num(r[10], 1), created_at: r[11], last_login_at: r[12],
+  can_download: (r[13] ?? "").toUpperCase() === "TRUE",
 });
 const fromUser = (u: UserRecord): string[] => [
   u.id, u.username, u.display_name, u.password_hash, u.status, u.setup_code_hash, u.setup_code_expires_at,
   String(u.setup_attempts), String(u.failed_logins), u.locked_until, String(u.session_version), u.created_at, u.last_login_at,
+  u.can_download ? "TRUE" : "FALSE",
 ];
 const toUserBook = (r: string[]): UserBookRecord => ({ user_id: r[0], book_id: r[1], source: r[2] === "code" ? "code" : "admin", code_id: r[3], granted_at: r[4] });
 const fromUserBook = (b: UserBookRecord): string[] => [b.user_id, b.book_id, b.source, b.code_id, b.granted_at];
@@ -35,6 +39,15 @@ const toProgress = (r: string[]): ProgressRecord => ({ user_id: r[0], book_id: r
 const fromProgress = (p: ProgressRecord): string[] => [p.user_id, p.book_id, String(p.page), p.updated_at];
 const toBookmark = (r: string[]): BookmarkRecord => ({ id: r[0], user_id: r[1], book_id: r[2], page: num(r[3]), label: r[4] ?? "", created_at: r[5] ?? "" });
 const fromBookmark = (b: BookmarkRecord): string[] => [b.id, b.user_id, b.book_id, String(b.page), b.label, b.created_at];
+const toDownload = (r: string[]): DownloadRecord => ({
+  id: r[0], actor: r[1] === "admin" ? "admin" : "user", user_id: r[2], username: r[3], display_name: r[4], book_id: r[5], book_title: r[6],
+  from_page: num(r[7]), to_page: num(r[8]), page_count: num(r[9]), device: r[10] === "Móvil" ? "Móvil" : "Ordenador",
+  status: r[11] === "completed" || r[11] === "cancelled" || r[11] === "failed" ? r[11] : "started", created_at: r[12], finished_at: r[13] ?? "",
+});
+const fromDownload = (d: DownloadRecord): string[] => [
+  d.id, d.actor, d.user_id, d.username, d.display_name, d.book_id, d.book_title, String(d.from_page), String(d.to_page), String(d.page_count),
+  d.device, d.status, d.created_at, d.finished_at,
+];
 const toPasskey = (r: string[]): PasskeyRecord => ({
   id: r[0], user_id: r[1], credential_id: r[2], public_key: r[3], counter: num(r[4]), transports: r[5], label: r[6], created_at: r[7], last_used_at: r[8],
 });
@@ -50,6 +63,9 @@ interface Snap {
   bookmarks: BookmarkRecord[];
   /** false while the bookmarks tab does not exist (bookmarks then stay on the reader's device) */
   bookmarksOk: boolean;
+  downloads: DownloadRecord[];
+  /** false while the downloads tab does not exist: the download features and the log stay hidden */
+  downloadsOk: boolean;
 }
 interface BmQueue { remove: Set<string>; add: Map<string, BookmarkRecord>; /** when the oldest waiting change was made */ since: number }
 interface Store {
@@ -67,28 +83,49 @@ interface Store {
   /** don't ask for the bookmarks tab again before this time (it was missing) */
   bmMissingUntil: number;
   bmWarned: boolean;
+  /** download rows this instance wrote recently (id -> latest state), re-applied over fresh reads for a few minutes */
+  dlLocal: Map<string, DownloadRecord>;
+  dlMissingUntil: number;
+  dlWarned: boolean;
 }
 const g = globalThis as unknown as { __usersStore?: Store };
-const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false });
+const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false, dlLocal: new Map(), dlMissingUntil: 0, dlWarned: false });
 const pkey = (userId: string, bookId: string) => `${userId}:${bookId}`;
 
 async function snapshot(): Promise<Snap> {
   if (store.snap && Date.now() - store.snap.at < USERS_CACHE_MS) return store.snap;
   store.loading ??= (async () => {
     try {
-      // One batchGet. If the bookmarks tab is not there (Google answers 400), read the four old tabs as before and
-      // remember not to ask again for a few minutes: nothing else may ever break because of the new tab.
+      // One batchGet. If an optional tab (bookmarks, downloads) is not there (Google answers 400), read the old tabs as
+      // before, try each optional tab on its own and remember not to ask again for a few minutes: nothing else may ever
+      // break because of a new tab.
       const wantBm = Date.now() >= store.bmMissingUntil;
+      const wantDl = Date.now() >= store.dlMissingUntil;
+      const optional = [...(wantBm ? ["bookmarks"] : []), ...(wantDl ? ["downloads"] : [])];
       let d: Record<string, string[][]>;
       let bookmarksOk = wantBm;
+      let downloadsOk = wantDl;
       try {
-        d = await table().listMany(wantBm ? [...TABS, "bookmarks"] : [...TABS]);
+        d = await table().listMany([...TABS, ...optional]);
       } catch (e) {
-        if (!wantBm) throw e;
-        store.bmMissingUntil = Date.now() + BM_RETRY_MS;
-        bookmarksOk = false;
-        if (!store.bmWarned) { store.bmWarned = true; console.warn("[bookmarks] the `bookmarks` tab is missing: run `npm run setup-sheet`. Bookmarks stay on the reader's device until then."); }
+        if (!optional.length) throw e;
         d = await table().listMany([...TABS]);
+        bookmarksOk = false;
+        downloadsOk = false;
+        for (const tab of optional) {
+          try {
+            d[tab] = (await table().listMany([tab]))[tab];
+            if (tab === "bookmarks") bookmarksOk = true; else downloadsOk = true;
+          } catch {
+            if (tab === "bookmarks") {
+              store.bmMissingUntil = Date.now() + BM_RETRY_MS;
+              if (!store.bmWarned) { store.bmWarned = true; console.warn("[bookmarks] the `bookmarks` tab is missing: run `npm run setup-sheet`. Bookmarks stay on the reader's device until then."); }
+            } else {
+              store.dlMissingUntil = Date.now() + DL_RETRY_MS;
+              if (!store.dlWarned) { store.dlWarned = true; console.warn("[downloads] the `downloads` tab is missing: run `npm run setup-sheet`. The download features stay hidden until then."); }
+            }
+          }
+        }
       }
       const snap: Snap = {
         at: Date.now(),
@@ -98,7 +135,11 @@ async function snapshot(): Promise<Snap> {
         passkeys: d.passkeys.filter((r) => r[0]).map(toPasskey),
         bookmarks: bookmarksOk ? (d.bookmarks ?? []).filter((r) => r[0] && r[1]).map(toBookmark) : [],
         bookmarksOk,
+        downloads: downloadsOk ? (d.downloads ?? []).filter((r) => r[0]).map(toDownload) : [],
+        downloadsOk,
       };
+      // Rows written by this instance that the sheet read does not show yet (or finished rows it still shows as started).
+      for (const rec of store.dlLocal.values()) upsertLocalDownload(snap, rec);
       for (const [uid, q] of store.bmPending) applyQueueToList(snap, uid, q);
       // Progress that is still waiting to be written is newer than the sheet.
       for (const p of store.pending.values()) upsertLocalProgress(snap, p);
@@ -183,7 +224,7 @@ export async function createUser(input: { username: string; display_name: string
   const user: UserRecord = {
     id: randomUUID(), username: input.username, display_name: input.display_name, password_hash: "", status: "pending",
     setup_code_hash: input.setup_code_hash, setup_code_expires_at: input.setup_code_expires_at, setup_attempts: 0, failed_logins: 0,
-    locked_until: "", session_version: 1, created_at: now, last_login_at: "",
+    locked_until: "", session_version: 1, created_at: now, last_login_at: "", can_download: false,
   };
   const grants = grantsFor(user.id, input.books, now);
   await table().append("users", fromUser(user));
@@ -440,4 +481,59 @@ function retryBookmarksLater() {
   if (bmRetry) return;
   bmRetry = setTimeout(() => { bmRetry = null; void drainBookmarks(); }, 30_000);
   bmRetry.unref?.();
+}
+
+
+// ---- downloads (the log, and the per-user permission) ----
+const DL_LOCAL_MS = 10 * 60_000;
+function upsertLocalDownload(s: Snap, rec: DownloadRecord) {
+  if (!s.downloadsOk) return;
+  const i = s.downloads.findIndex((x) => x.id === rec.id);
+  if (i >= 0) s.downloads[i] = rec;
+  else s.downloads.push(rec);
+}
+function rememberDownload(rec: DownloadRecord) {
+  store.dlLocal.set(rec.id, rec);
+  for (const [id, r] of store.dlLocal) if (Date.now() - Date.parse(r.created_at) > DL_LOCAL_MS && Date.now() - (Date.parse(r.finished_at) || 0) > DL_LOCAL_MS) store.dlLocal.delete(id);
+}
+/**
+ * The download features exist only when BOTH the `downloads` tab and the `users.can_download` column are there
+ * (`npm run setup-sheet` adds them). Without either, the UI and the log stay hidden and nothing else changes.
+ */
+export async function downloadsAvailable(): Promise<boolean> {
+  const s = await snapshot();
+  return s.downloadsOk && (await table().hasColumn("users", SHEET_TABS.users.length, "can_download"));
+}
+/** The whole log, oldest first (callers sort and filter). */
+export async function listDownloads(): Promise<DownloadRecord[]> {
+  return (await snapshot()).downloads.map((d) => ({ ...d }));
+}
+/** Writes the row that says a download has started (one write). */
+export async function startDownload(rec: DownloadRecord): Promise<void> {
+  await table().append("downloads", fromDownload(rec));
+  rememberDownload(rec);
+  upsertLocalDownload(await snapshot(), rec);
+}
+export type FinishResult = { state: "ok" | "already"; rec: DownloadRecord } | { state: "missing" | "forbidden" };
+/** started -> completed | cancelled | failed, in one write (the fresh row is read first). Finished rows never change again. */
+export async function finishDownload(id: string, status: Exclude<DownloadStatus, "started">, allow: (d: DownloadRecord) => boolean): Promise<FinishResult> {
+  const box: { result: FinishResult } = { result: { state: "missing" } };
+  await table().modifyWhere("downloads", [[0, id]], (r) => {
+    const cur = toDownload(r);
+    if (!allow(cur)) { box.result = { state: "forbidden" }; return null; }
+    if (cur.status !== "started") { box.result = { state: "already", rec: cur }; return null; }
+    const next: DownloadRecord = { ...cur, status, finished_at: new Date().toISOString() };
+    box.result = { state: "ok", rec: next };
+    return fromDownload(next);
+  });
+  const result = box.result;
+  if (result.state === "ok") {
+    rememberDownload(result.rec);
+    upsertLocalDownload(await snapshot(), result.rec);
+  }
+  return result;
+}
+/** Downloads this user started since `sinceMs` (any outcome counts). */
+export async function downloadsSince(userId: string, sinceMs: number): Promise<number> {
+  return (await snapshot()).downloads.filter((d) => d.actor === "user" && d.user_id === userId && Date.parse(d.created_at) >= sinceMs).length;
 }

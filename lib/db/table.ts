@@ -25,6 +25,8 @@ export interface Table {
    * something has to be removed). Text is stored literally (never parsed as a formula).
    */
   applyRows(tab: string, removeIds: string[], add: string[][]): Promise<void>;
+  /** Whether column `index` (0-based) of `tab` has the header `name`. Cached for a few minutes; false on any error. */
+  hasColumn(tab: string, index: number, name: string): Promise<boolean>;
 }
 
 export const TABS = {
@@ -36,5 +38,8 @@ export const TABS = {
   progress: ["user_id", "book_id", "page", "updated_at"],
   passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
   bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
+  downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
 } as const;
+/** Columns appended at the END of an existing tab later. The tab only has them once `npm run setup-sheet` has run. */
+export const EXTRA_COLS = { users: ["can_download"] } as const;
 export type TabName = keyof typeof TABS;

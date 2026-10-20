@@ -275,7 +275,7 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .seg button:active { transform: scale(0.97); }
 .seg button[aria-checked="true"] { color: var(--fg); }
 .seg .thumb { position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 7px; background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22); transition: transform 420ms var(--spring); }
-.seg[data-value="pdf"] .thumb { transform: translateX(100%); }
+.seg[data-value="pdf"] .thumb, .seg[data-value="images"] .thumb { transform: translateX(100%); }
 .book-leaf { will-change: transform, opacity; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .book-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 

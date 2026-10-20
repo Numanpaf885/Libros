@@ -11,8 +11,8 @@ import Viewer from "@/components/reader/Viewer";
 import { useMe } from "@/lib/client/me";
 
 export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number }
-interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null }
-type Outcome = { ok: true; progress: number } | { error: string };
+interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null; can_download?: boolean }
+type Outcome = { ok: true; progress: number; canDownload: boolean } | { error: string };
 
 async function fetchMeta(slug: string): Promise<Meta | null> {
   const res = await fetch(`/api/books/${encodeURIComponent(slug)}/meta`, { cache: "no-store" });
@@ -29,7 +29,7 @@ async function tryUnlock(slug: string, code: string): Promise<Outcome> {
     return { error: msg ?? "No se pudo comprobar el código. Inténtalo de nuevo." };
   }
   const m = await fetchMeta(slug);
-  return m ? { ok: true, progress: m.progress ?? 0 } : { error: "No se pudo abrir el libro. Inténtalo de nuevo." };
+  return m ? { ok: true, progress: m.progress ?? 0, canDownload: !!m.can_download } : { error: "No se pudo abrir el libro. Inténtalo de nuevo." };
 }
 /** The page saved on this device, unless the account has a later one from another device (`remote`). */
 const savedPage = (slug: string, count: number, remote = 0) => {
@@ -53,6 +53,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const [reading, setReading] = useState<null | { start: number; offer: number }>(null);
   const [saved, setSaved] = useState(0);
   const [sheet, setSheet] = useState(false);
+  const [canDownload, setCanDownload] = useState(false); // signed in, with the download permission, and this book is theirs
   const phone = usePhone(); // phones: the code is entered in a bottom sheet
   const me = useMe();
 
@@ -65,7 +66,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   // The initial check must be safe to run twice (React StrictMode re-runs effects in dev): the
   // job is started once and kept in a ref, so a second run reuses it instead of finding the
   // ?code= already stripped from the URL and discarding the first run's result.
-  const initial = useRef<Promise<{ unlocked: boolean; error?: string; hash: { page: number | null; open: boolean }; viaLink: boolean; progress: number }> | null>(null);
+  const initial = useRef<Promise<{ unlocked: boolean; error?: string; hash: { page: number | null; open: boolean }; viaLink: boolean; progress: number; canDownload: boolean }> | null>(null);
   useEffect(() => {
     if (!initial.current) {
       const url = new URL(window.location.href);
@@ -75,15 +76,16 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
         // Strip the secret from the address bar / history before anything else happens (keep #p=N).
         url.searchParams.delete("code");
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-        initial.current = tryUnlock(slug, c).then((o) => ({ unlocked: "ok" in o, error: "error" in o ? o.error : undefined, hash, viaLink: true, progress: "ok" in o ? o.progress : 0 }));
+        initial.current = tryUnlock(slug, c).then((o) => ({ unlocked: "ok" in o, error: "error" in o ? o.error : undefined, hash, viaLink: true, progress: "ok" in o ? o.progress : 0, canDownload: "ok" in o && o.canDownload }));
       } else {
-        initial.current = fetchMeta(slug).then((m) => ({ unlocked: !!m, hash, viaLink: false, progress: m?.progress ?? 0 }));
+        initial.current = fetchMeta(slug).then((m) => ({ unlocked: !!m, hash, viaLink: false, progress: m?.progress ?? 0, canDownload: !!m?.can_download }));
       }
     }
     let dead = false;
     initial.current.then((r) => {
       if (dead) return;
       remote.current = r.progress;
+      setCanDownload(r.canDownload);
       setUnlocked(r.unlocked);
       setSaved(savedPage(slug, book.pageCount, r.progress));
       if (r.error) setError(r.error);
@@ -103,7 +105,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const expired = useCallback(() => { setReading(null); setUnlocked(false); setError("Tu acceso ha terminado. Introduce un código válido."); }, []);
 
   if (reading && unlocked) {
-    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} onClose={close} onExpired={expired} />;
+    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} canDownload={canDownload} onClose={close} onExpired={expired} />;
   }
 
   const codeForm = (
@@ -113,7 +115,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                     setBusy(true); setError("");
                     const h = readHash();
                     tryUnlock(slug, code).then((o) => {
-                      if ("ok" in o) { remote.current = o.progress; setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount, o.progress)); open(h.page); }
+                      if ("ok" in o) { remote.current = o.progress; setCanDownload(o.canDownload); setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount, o.progress)); open(h.page); }
                       else setError(o.error);
                       setBusy(false);
                     }).catch(() => { setError("Algo ha salido mal. Inténtalo de nuevo."); setBusy(false); });

@@ -11,7 +11,12 @@ import { api, ApiError, AuthError, errText } from "@/lib/client/api";
 import { fmtDate, fmtSize } from "@/lib/client/format";
 import { formatEta, uploadFlow, type Progress as UploadProgress, type UploadMode } from "@/lib/client/upload";
 import type { AdminBook } from "@/lib/types";
+import DownloadDialog from "@/components/download/DownloadDialog";
+import type { ImagePlan } from "@/lib/client/images";
 import CodesPanel from "./CodesPanel";
+import DownloadsPanel, { DownloadHistory } from "./DownloadsPanel";
+import ImagePicker, { useImagePlan } from "./ImagePicker";
+import SourceSwitch, { type SourceKind } from "./SourceSwitch";
 import UsersPanel from "./UsersPanel";
 
 const phoneQuery = "(max-width: 767px)";
@@ -27,7 +32,7 @@ function useIsPhone() {
   );
 }
 
-function ProgressBar({ p }: { p: UploadProgress | null }) {
+function ProgressBar({ p, waiting = "Leyendo el PDF…" }: { p: UploadProgress | null; waiting?: string }) {
   const pct = p && p.total ? Math.round((p.done / p.total) * 100) : 0;
   return (
     <div className="space-y-2" role="status">
@@ -35,7 +40,7 @@ function ProgressBar({ p }: { p: UploadProgress | null }) {
         <div className="h-full bg-accent transition-[width] duration-200 ease-out motion-reduce:transition-none" style={{ width: `${pct}%` }} />
       </div>
       <p className="tnum text-sm text-muted" data-testid="progress">
-        {p ? `${p.done} / ${p.total} páginas · ${pct} % · ${formatEta(p.etaSec)}` : "Leyendo el PDF…"}
+        {p ? `${p.done} / ${p.total} páginas · ${pct} % · ${formatEta(p.etaSec)}` : waiting}
       </p>
     </div>
   );
@@ -49,18 +54,20 @@ function useUploader(onDone: () => void) {
   const [err, setErr] = useState("");
   const ctl = useRef<AbortController | null>(null);
 
-  async function start(o: { file: File; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft" }) {
+  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft" }) {
     ctl.current = new AbortController();
     setBusy(true); setErr(""); setProgress(null);
     try {
       await uploadFlow({ status: "draft", ...o, onProgress: setProgress, signal: ctl.current.signal });
       toast("ok", "Libro subido correctamente");
     } catch (e) {
+      const what = o.images ? "las mismas imágenes en el mismo orden" : "el mismo PDF";
       const m = ctl.current.signal.aborted
-        ? "Subida cancelada. Lo subido se conserva: pulsa «Continuar subida» en el libro y selecciona el mismo PDF."
+        ? `Subida cancelada. Lo subido se conserva: pulsa «Continuar subida» en el libro y selecciona ${what}.`
         : e instanceof ApiError || e instanceof AuthError ? e.message
-        : e instanceof Error && /not the file/.test(e.message) ? "Este no es el archivo con el que empezó la subida."
+        : e instanceof Error && /not the file/.test(e.message) ? (o.images ? "Estas imágenes no son las de la subida empezada (mismos archivos, mismo orden)." : "Este no es el archivo con el que empezó la subida.")
         : e instanceof Error && /different file/.test(e.message) ? "Ya hay una sustitución en curso con otro archivo. Descártala primero."
+        : e instanceof Error && /^No se puede leer la imagen/.test(e.message) ? e.message
         : "La subida ha fallado. Inténtalo de nuevo.";
       setErr(m);
       toast("error", m);
@@ -81,6 +88,8 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
   const [category, setCategory] = useState("");
   const [year, setYear] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("published");
+  const [source, setSource] = useState<SourceKind>("pdf");
+  const imgs = useImagePlan();
   const input = useRef<HTMLInputElement>(null);
 
   const pick = (f: File | undefined | null) => { if (f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name))) setFile(f); };
@@ -89,17 +98,21 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!file) return;
-        await up.start({ file, mode: "new", status, meta: { title, description, author, category, year } });
+        if (source === "images" ? !imgs.plan : !file) return;
+        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year } });
         setFile(null); setTitle(""); setDescription(""); setAuthor(""); setCategory(""); setYear("");
+        imgs.reset();
         if (input.current) input.current.value = "";
       }}
       className="card space-y-5 p-5 sm:p-7"
     >
-      <h2 className="text-2xl">Subir un libro nuevo</h2>
-      {phone && <p role="alert" className="rounded-card border border-accent bg-accent/10 p-3 text-[15px]">Para subir libros necesitas un ordenador. Las páginas se preparan en el navegador y un móvil no tiene potencia suficiente.</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl">Subir un libro nuevo</h2>
+        <SourceSwitch value={source} onChange={setSource} disabled={up.busy} />
+      </div>
+      {phone && source === "pdf" && <p role="alert" className="rounded-card border border-accent bg-accent/10 p-3 text-[15px]">Para subir libros necesitas un ordenador. Las páginas se preparan en el navegador y un móvil no tiene potencia suficiente.</p>}
 
-      <label
+      {source === "images" ? <ImagePicker state={imgs} disabled={up.busy} /> : <label
         htmlFor="pdf-file"
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
@@ -119,7 +132,7 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
           </>
         )}
         <input ref={input} id="pdf-file" name="pdf" type="file" accept="application/pdf" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
-      </label>
+      </label>}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
@@ -154,10 +167,10 @@ function UploadCard({ onDone, phone }: { onDone: () => void; phone: boolean }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button aria-busy={up.busy} disabled={up.busy || !file || !title.trim()} className="btn btn-primary">Subir libro</button>
+        <button aria-busy={up.busy} disabled={up.busy || (source === "images" ? !imgs.plan : !file) || !title.trim()} className="btn btn-primary">Subir libro</button>
         {up.busy && <button type="button" className="btn" onClick={up.cancel}>Cancelar</button>}
       </div>
-      {(up.busy || up.progress) && <ProgressBar p={up.progress} />}
+      {(up.busy || up.progress) && <ProgressBar p={up.progress} waiting={source === "images" ? "Preparando las imágenes…" : undefined} />}
       {up.err && !up.busy && <p role="alert" className="err">{up.err}</p>}
     </form>
   );
@@ -168,17 +181,25 @@ const CHIP: Record<AdminBook["status"], [string, string]> = {
   draft: ["chip chip-draft", "Borrador"],
   uploading: ["chip chip-busy", "Subiendo"],
 };
-type PanelName = "edit" | "codes" | "replace" | "delete";
-const GRID = "md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6.5rem_7rem_15rem] md:items-center md:gap-4";
+type PanelName = "edit" | "codes" | "replace" | "delete" | "history";
+const GRID = "md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6.5rem_7rem_20rem] md:items-center md:gap-4";
 
-function BookRow({ book, reload, phone }: { book: AdminBook; reload: () => void; phone: boolean }) {
+function BookRow({ book, reload, phone, dl }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean }) {
   const toast = useToast();
   const [panel, setPanel] = useState<PanelName | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [askDelete, setAskDelete] = useState(false);
   const up = useUploader(reload);
+  const [source, setSource] = useState<SourceKind>("pdf");
+  const imgs = useImagePlan();
+  const [askDownload, setAskDownload] = useState(false);
   const uploading = book.status === "uploading";
+  /** resume an interrupted upload, continue a pending replacement, or start a replacement */
+  const startReplace = (src: { file: File } | { images: ImagePlan }) =>
+    up.start(uploading ? { ...src, mode: "resume", bookId: book.id }
+      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published" }
+      : { ...src, mode: "replace", bookId: book.id });
   const toggle = (p: PanelName) => setPanel(panel === p ? null : p);
   const [chipClass, chipText] = CHIP[book.status];
 
@@ -212,6 +233,8 @@ function BookRow({ book, reload, phone }: { book: AdminBook; reload: () => void;
               <button className="btn btn-sm" onClick={() => toggle("edit")}>Editar</button>
               <button className="btn btn-sm" onClick={() => toggle("codes")}>Códigos</button>
               <button className="btn btn-sm" onClick={() => toggle("replace")}>{book.pending_replacement ? "Continuar sustitución" : "Sustituir PDF"}</button>
+              {dl && <button className="btn btn-sm" onClick={() => setAskDownload(true)}><Icon name="download" size={16} />Descargar</button>}
+              {dl && <button className="btn btn-sm" onClick={() => toggle("history")}>Historial</button>}
             </>
           )}
           <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
@@ -243,26 +266,32 @@ function BookRow({ book, reload, phone }: { book: AdminBook; reload: () => void;
           )}
 
           {panel === "replace" && (
-            <div className="max-w-2xl space-y-3">
-              {phone && <p role="alert" className="rounded-card border border-accent bg-accent/10 p-3 text-[15px]">Para subir libros necesitas un ordenador.</p>}
+            <div className={`${source === "images" ? "max-w-4xl" : "max-w-2xl"} space-y-3`}>
+              <SourceSwitch value={source} onChange={setSource} disabled={up.busy} />
+              {phone && source === "pdf" && <p role="alert" className="rounded-card border border-accent bg-accent/10 p-3 text-[15px]">Para subir libros necesitas un ordenador.</p>}
               <p className="hint">
                 {uploading
-                  ? "Esta subida se interrumpió. Selecciona el mismo PDF y solo se enviarán las páginas que faltan."
+                  ? `Esta subida se interrumpió. Selecciona ${source === "images" ? "las mismas imágenes en el mismo orden" : "el mismo PDF"} y solo se enviarán las páginas que faltan.`
                   : book.pending_replacement
-                    ? "Hay una sustitución en curso. Selecciona el mismo PDF para continuar; mientras tanto el libro sigue mostrando las páginas antiguas."
+                    ? `Hay una sustitución en curso. Selecciona ${source === "images" ? "las mismas imágenes en el mismo orden" : "el mismo PDF"} para continuar; mientras tanto el libro sigue mostrando las páginas antiguas.`
                     : "Las páginas nuevas se suben primero a otra ubicación; las antiguas se borran solo cuando todo está listo."}
               </p>
-              <input type="file" accept="application/pdf" disabled={up.busy} className="block w-full text-sm text-muted file:mr-3 file:rounded-ctl file:border file:border-line-strong file:bg-surface file:px-4 file:py-2 file:text-fg"
-                aria-label="Archivo PDF"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  void up.start(uploading ? { file, mode: "resume", bookId: book.id }
-                    : book.pending_replacement ? { file, mode: "resume", bookId: book.pending_replacement, status: "published" }
-                    : { file, mode: "replace", bookId: book.id });
-                }} />
+              {source === "pdf" ? (
+                <input type="file" accept="application/pdf" disabled={up.busy} className="block w-full text-sm text-muted file:mr-3 file:rounded-ctl file:border file:border-line-strong file:bg-surface file:px-4 file:py-2 file:text-fg"
+                  aria-label="Archivo PDF"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    void startReplace({ file });
+                  }} />
+              ) : (
+                <>
+                  <ImagePicker state={imgs} disabled={up.busy} />
+                  {imgs.plan && <button type="button" aria-busy={up.busy} disabled={up.busy} className="btn btn-primary" onClick={() => void startReplace({ images: imgs.plan! })}>{uploading ? "Continuar subida" : book.pending_replacement ? "Continuar sustitución" : "Sustituir con estas imágenes"}</button>}
+                </>
+              )}
               {up.busy && <button className="btn btn-sm" onClick={up.cancel}>Cancelar</button>}
-              {(up.busy || up.progress) && <ProgressBar p={up.progress} />}
+              {(up.busy || up.progress) && <ProgressBar p={up.progress} waiting={source === "images" ? "Preparando las imágenes…" : undefined} />}
               {up.err && !up.busy && <p role="alert" className="err">{up.err}</p>}
               {book.pending_replacement && !uploading && !up.busy && (
                 <button className="btn btn-sm btn-danger" onClick={() => run(async () => { await api(`/api/admin/books/${book.pending_replacement}`, "DELETE", { title: book.title }); toast("ok", "Sustitución descartada"); reload(); })}>
@@ -272,10 +301,13 @@ function BookRow({ book, reload, phone }: { book: AdminBook; reload: () => void;
             </div>
           )}
 
+          {panel === "history" && <DownloadHistory filter={{ book: book.id }} />}
+
           {panel === "codes" && <CodesPanel book={book} onBookChanged={reload} />}
         </div>
       )}
 
+      {dl && <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} bookTitle={book.title} slug={book.slug} pageCount={book.page_count} mode="admin" bookId={book.id} />}
       <ConfirmDialog
         open={askDelete} danger title="Eliminar libro" confirmLabel="Eliminar para siempre" busy={busy} confirmDisabled={confirm !== book.title}
         onCancel={() => setAskDelete(false)}
@@ -294,7 +326,8 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const phone = useIsPhone();
   const [books, setBooks] = useState<AdminBook[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [tab, setTab] = useState<"books" | "users">("books");
+  const [tab, setTab] = useState<"books" | "users" | "downloads">("books");
+  const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
@@ -308,6 +341,12 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       });
     return () => { dead = true; };
   }, [version, router, toast]);
+
+  useEffect(() => {
+    let dead = false;
+    api<{ available: boolean }>("/api/admin/downloads?size=1").then((r) => { if (!dead) setDl(r.available); }).catch(() => {});
+    return () => { dead = true; };
+  }, []);
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -329,13 +368,17 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       </header>
 
       <div role="tablist" aria-label="Secciones" className="flex gap-2">
-        {([["books", "Libros"], ["users", "Usuarios"]] as const).map(([id, label]) => (
+        {([["books", "Libros"], ["users", "Usuarios"], ...(dl ? [["downloads", "Descargas"] as const] : [])] as const).map(([id, label]) => (
           <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}
             className={`btn min-h-11 ${tab === id ? "btn-primary" : ""}`}>{label}</button>
         ))}
       </div>
 
-      {tab === "users" ? (
+      {tab === "downloads" && dl ? (
+        <div role="tabpanel" id="panel-downloads" aria-labelledby="tab-downloads">
+          <DownloadsPanel />
+        </div>
+      ) : tab === "users" ? (
         <div role="tabpanel" id="panel-users" aria-labelledby="tab-users">
           <UsersPanel books={(books ?? []).filter((b) => b.status !== "uploading")} />
         </div>
@@ -355,7 +398,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
               <span role="columnheader">Título</span><span role="columnheader">Estado</span><span role="columnheader">Páginas</span><span role="columnheader">Actualizado</span><span role="columnheader" className="text-right">Acciones</span>
             </div>
             <ul role="rowgroup" className="space-y-3 md:space-y-0">
-              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} />)}
+              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} />)}
             </ul>
           </div>
         </section>

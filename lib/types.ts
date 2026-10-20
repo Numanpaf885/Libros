@@ -73,6 +73,8 @@ export interface UserRecord {
   session_version: number;
   created_at: string;
   last_login_at: string;
+  /** users.can_download (column added later): may download books as PDF. false when the column is missing or empty. */
+  can_download: boolean;
 }
 export interface UserBookRecord { user_id: string; book_id: string; source: "admin" | "code"; code_id: string; granted_at: string }
 export interface ProgressRecord { user_id: string; book_id: string; page: number; updated_at: string }
@@ -91,3 +93,22 @@ export interface PasskeyRecord {
 export const ALL_BOOKS = "*";
 
 export interface BookmarkRecord { id: string; user_id: string; book_id: string; page: number; label: string; created_at: string }
+
+export type DownloadStatus = "started" | "completed" | "cancelled" | "failed";
+/** One row of the `downloads` tab. username, display_name and book_title are snapshots taken when the download started. */
+export interface DownloadRecord {
+  id: string;
+  actor: "admin" | "user";
+  user_id: string;
+  username: string;
+  display_name: string;
+  book_id: string;
+  book_title: string;
+  from_page: number;
+  to_page: number;
+  page_count: number;
+  device: "Móvil" | "Ordenador";
+  status: DownloadStatus;
+  created_at: string;
+  finished_at: string;
+}

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import type { Table, TabName } from "./table";
-import { TABS } from "./table";
+import { EXTRA_COLS, TABS } from "./table";
 
 const FILE = path.join(process.cwd(), ".data", "mock-sheet.json");
 type State = Record<TabName, string[][]>;
@@ -29,6 +29,7 @@ function load(): State {
       progress: [],
       passkeys: [],
       bookmarks: [],
+      downloads: [],
     };
   }
   // Older mock files do not have the tabs added later.
@@ -58,6 +59,21 @@ function op(kind: "read" | "write", tab: string, n = 1) {
 const matches = (r: string[], m: [number, string][]) => m.every(([c, v]) => r[c] === v);
 // Tests only: MOCK_MISSING_TABS=bookmarks behaves like a Sheet without that tab (Google answers 400 "Unable to parse range").
 const missing = (tab: string) => (process.env.MOCK_MISSING_TABS ?? "").split(",").some((t) => t && tab.split("+").includes(t.trim()));
+// Tests only: MOCK_MISSING_COLUMNS=can_download behaves like a `users` tab that has not got that column yet.
+const columnMissing = (name: string) => (process.env.MOCK_MISSING_COLUMNS ?? "").split(",").some((c) => c.trim() === name);
+/** Rows of a tab as the real Sheets backend would return/store them (without columns the sheet does not have). */
+function width(tab: string): number {
+  const base = TABS[tab as TabName].length;
+  const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab];
+  return extra && !columnMissing(extra[0]) ? base + 1 : base;
+}
+const out = (tab: string, r: string[]): string[] => {
+  const w = width(tab);
+  const o = r.slice(0, w);
+  while (o.length < w) o.push("");
+  return o;
+};
+const inn = (tab: string, r: string[]): string[] => r.slice(0, width(tab));
 function guard(tab: string) {
   if (missing(tab)) throw Object.assign(new Error(`Unable to parse range: ${tab}!A2:F`), { code: 400 });
 }
@@ -66,19 +82,19 @@ export const mockTable: Table = {
   async list(tab) {
     guard(tab);
     op("read", tab);
-    return load()[tab as TabName].map((r) => [...r]);
+    return load()[tab as TabName].map((r) => out(tab, r));
   },
   async listMany(tabs) {
     guard(tabs.join("+"));
     op("read", tabs.join("+"));
     const st = load();
-    return Object.fromEntries(tabs.map((t) => [t, st[t as TabName].map((r) => [...r])]));
+    return Object.fromEntries(tabs.map((t) => [t, st[t as TabName].map((r) => out(t, r))]));
   },
   async append(tab, row) {
     guard(tab);
     op("write", tab);
     const st = load();
-    st[tab as TabName].push([...row]);
+    st[tab as TabName].push(inn(tab, row));
     persist(st);
   },
   async appendMany(tab, rows) {
@@ -86,7 +102,7 @@ export const mockTable: Table = {
     guard(tab);
     op("write", tab);
     const st = load();
-    for (const r of rows) st[tab as TabName].push([...r]);
+    for (const r of rows) st[tab as TabName].push(inn(tab, r));
     persist(st);
   },
   async modifyWhere(tab, match, fn) {
@@ -95,12 +111,12 @@ export const mockTable: Table = {
     const st = load();
     const i = st[tab as TabName].findIndex((r) => matches(r, match));
     if (i < 0) return null;
-    const next = fn([...st[tab as TabName][i]]);
+    const next = fn(out(tab, st[tab as TabName][i]));
     if (!next) return null;
     op("write", tab);
-    st[tab as TabName][i] = [...next];
+    st[tab as TabName][i] = inn(tab, next);
     persist(st);
-    return [...next];
+    return out(tab, next);
   },
   async upsertMany(tab, keyCols, rows) {
     if (!rows.length) return;
@@ -112,7 +128,7 @@ export const mockTable: Table = {
     const fresh: string[][] = [];
     for (const row of rows) {
       const i = list.findIndex((r) => keyCols.every((c) => r[c] === row[c]));
-      if (i >= 0) { list[i] = [...row]; updated = true; } else fresh.push([...row]);
+      if (i >= 0) { list[i] = inn(tab, row); updated = true; } else fresh.push(inn(tab, row));
     }
     if (updated) op("write", tab);
     if (fresh.length) { op("write", tab); for (const r of fresh) list.push(r); }
@@ -148,9 +164,13 @@ export const mockTable: Table = {
     const i = rows.findIndex((r) => r[0] === id);
     if (i < 0) return false;
     op("write", tab);
-    rows[i] = [...row];
+    rows[i] = inn(tab, row);
     persist(st);
     return true;
+  },
+  async hasColumn(tab, index, name) {
+    const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab];
+    return !!extra && extra[0] === name && index === TABS[tab as TabName].length && !columnMissing(name);
   },
   async deleteWhere(tab, col, value) {
     op("read", tab, 2);
