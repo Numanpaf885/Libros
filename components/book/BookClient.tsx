@@ -11,7 +11,7 @@ import Viewer from "@/components/reader/Viewer";
 import { labelOf, parseLabels } from "@/lib/page-labels";
 import { useMe } from "@/lib/client/me";
 
-export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number; /** printed page numbering (JSON); "" = none */ pageLabels?: string }
+export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number; /** printed page numbering (JSON); "" = none */ pageLabels?: string; /** the pages have selectable text (and the admin allows copying) */ text?: boolean }
 interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null; can_download?: boolean }
 type Outcome = { ok: true; progress: number; canDownload: boolean } | { error: string };
 
@@ -107,7 +107,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const expired = useCallback(() => { setReading(null); setUnlocked(false); setError("Tu acceso ha terminado. Introduce un código válido."); }, []);
 
   if (reading && unlocked) {
-    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} canDownload={canDownload} labels={labels} onClose={close} onExpired={expired} />;
+    return <Viewer slug={slug} title={book.title} pageCount={book.pageCount} initialPage={reading.start} offer={reading.offer} canDownload={canDownload} labels={labels} text={!!book.text} onClose={close} onExpired={expired} />;
   }
 
   const codeForm = (

@@ -35,10 +35,10 @@ function s3(): S3Client {
 }
 const bucket = () => requireEnv("R2_BUCKET");
 
-export async function presignPut(key: string): Promise<string> {
+export async function presignPut(key: string, contentType = "image/webp"): Promise<string> {
   // content-type is marked unhoistable so it ends up in X-Amz-SignedHeaders: R2 then rejects a
-  // PUT that does not send exactly Content-Type: image/webp (the uploader always does).
-  return getSignedUrl(s3(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: "image/webp" }), {
+  // PUT that does not send exactly that Content-Type (image/webp for pages; the uploader always sends it).
+  return getSignedUrl(s3(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: contentType }), {
     expiresIn: PUT_TTL_S,
     unhoistableHeaders: new Set(["content-type"]),
     signableHeaders: new Set(["content-type"]),
@@ -85,6 +85,16 @@ export async function head(key: string): Promise<number | null> {
   try {
     const r = await s3().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
     return r.ContentLength ?? 0;
+  } catch (e) {
+    const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    if (status === 404) return null;
+    throw e;
+  }
+}
+export async function readText(key: string): Promise<string | null> {
+  try {
+    const r = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+    return r.Body ? await r.Body.transformToString("utf-8") : "";
   } catch (e) {
     const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
     if (status === 404) return null;

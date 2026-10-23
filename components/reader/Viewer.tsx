@@ -11,6 +11,7 @@ import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
 import BookmarksPanel from "./BookmarksPanel";
 import DownloadDialog from "@/components/download/DownloadDialog";
 import { flushBook, reportPage } from "@/lib/client/progress-sync";
+import { inTextLayer, selectedText } from "@/lib/client/text";
 import { hasLabels, labelOf, labelSpan, labelTotal, pageFromInput, type LabelRange } from "@/lib/page-labels";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
@@ -28,6 +29,8 @@ interface Props {
   canDownload?: boolean;
   /** printed page numbers (see lib/page-labels.ts); none = the file page numbers are shown, exactly as before */
   labels?: LabelRange[];
+  /** the pages have selectable text (and the admin allows copying); without it the reader is exactly as before */
+  text?: boolean;
   onClose: () => void;
   onExpired: () => void;
 }
@@ -40,6 +43,7 @@ const GAP = 12;
 const DEFAULT_RATIO = 1.4142;
 const tb = "btn btn-icon min-h-11! min-w-11! border-transparent bg-transparent!";
 const MODE_KEY = "br:mode";
+const SELECT_KEY = "br:select";
 const EFFECT_KEY = "br:effect";
 const EFFECTS: { v: PageEffect; label: string }[] = [{ v: "turn", label: "Pasar página" }, { v: "slide", label: "Deslizar" }, { v: "none", label: "Ninguno" }];
 const OPEN_MIN_MS = 1500; // the opening animation lasts at least this long...
@@ -57,12 +61,14 @@ function initialMode(): ReadMode {
 }
 
 const NO_LABELS: LabelRange[] = [];
-export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, labels = NO_LABELS, onClose, onExpired }: Props) {
+export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, labels = NO_LABELS, text = false, onClose, onExpired }: Props) {
   const lsKey = `br:last:${slug}`;
   const [mode, setModeState] = useState<ReadMode>(initialMode);
   const [reduced] = useState(reducedMotion);
   const [effect, setEffectState] = useState<PageEffect>(initialEffect);
   const [fxMenu, setFxMenu] = useState(false);
+  // Book mode, "Seleccionar texto": a mouse drag selects text instead of turning the page
+  const [select, setSelectState] = useState(() => { try { return localStorage.getItem(SELECT_KEY) === "1"; } catch { return false; } });
   const [fit, setFit] = useState<Fit>("width");
   const [menu, setMenu] = useState(false); // phones: secondary controls live in a menu so the toolbar stays on one line
   const [customPct, setCustomPct] = useState(100);
@@ -100,6 +106,12 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     setModeState(m);
     if (m === "pdf") placed.current = false; // the scroller is created again: place it on the current page
     try { localStorage.setItem(MODE_KEY, m); } catch { /* ignore */ }
+  };
+
+  const setSelect = (on: boolean) => {
+    setSelectState(on);
+    if (!on) window.getSelection()?.removeAllRanges();
+    try { localStorage.setItem(SELECT_KEY, on ? "1" : "0"); } catch { /* ignore */ }
   };
 
   const setEffect = (v: PageEffect) => {
@@ -301,6 +313,15 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const turn = (d: 1 | -1) => (pdf ? goTo(page + d) : book.current?.turn(d));
   useEffect(() => {
     const stop = (e: Event) => e.preventDefault();
+    // Selection, the context menu (long-press "Copiar" on phones) and copying work on the text layer only.
+    const unlessText = (e: Event) => { if (!(text && inTextLayer(e.target as Node | null))) e.preventDefault(); };
+    const copy = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return; // the page box keeps its own copy
+      e.preventDefault();
+      const s = text ? selectedText() : null;
+      if (s) e.clipboardData?.setData("text/plain", s); // plain text, lines joined (see lib/text-layer.ts)
+    };
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ["s", "p"].includes(e.key.toLowerCase())) { e.preventDefault(); return; }
       if (dlOpen) return; // the download dialog is open: keys belong to it
@@ -312,16 +333,18 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
       else if (e.key === "Home") { e.preventDefault(); goTo(1); }
       else if (e.key === "End") { e.preventDefault(); goTo(pageCount); }
     };
-    document.addEventListener("contextmenu", stop);
+    document.addEventListener("contextmenu", unlessText);
     document.addEventListener("dragstart", stop);
-    document.addEventListener("selectstart", stop);
+    document.addEventListener("selectstart", unlessText);
+    document.addEventListener("copy", copy);
     window.addEventListener("keydown", key);
     const fs = () => setFull(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", fs);
     return () => {
-      document.removeEventListener("contextmenu", stop);
+      document.removeEventListener("contextmenu", unlessText);
       document.removeEventListener("dragstart", stop);
-      document.removeEventListener("selectstart", stop);
+      document.removeEventListener("selectstart", unlessText);
+      document.removeEventListener("copy", copy);
       window.removeEventListener("keydown", key);
       document.removeEventListener("fullscreenchange", fs);
     };
@@ -423,6 +446,12 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
 
           <div className="flex shrink-0 items-center gap-0.5">
             <ModeSwitch value={mode} onChange={setMode} />
+            {text && !pdf && (
+              <button
+                type="button" className={`${tb} hidden sm:inline-flex ${select ? "bg-fg/10! text-accent" : ""}`} aria-pressed={select} onClick={(e) => { setSelect(!select); if (e.detail > 0) e.currentTarget.blur(); }}
+                aria-label="Seleccionar texto" title={select ? "Seleccionar texto: activado (arrastra para seleccionar; las flechas pasan página)" : "Seleccionar texto"} data-testid="select-text"
+              ><Icon name="textCursor" /></button>
+            )}
             <form onSubmit={submitPage} className="relative ml-1 flex items-center gap-1.5 text-sm" noValidate>
               <label htmlFor="pagina" className="sr-only">Ir a la página</label>
               <input
@@ -481,7 +510,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
             <div className="relative mx-auto" style={{ height: total, width: innerW }}>
               {Array.from({ length: Math.max(0, winTo - winFrom + 1) }, (_, i) => winFrom + i).map((n) => (
                 <div key={n} className="absolute" style={{ top: offs[n - 1], left: (innerW - W) / 2 }}>
-                  <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} marked={bm.marks.has(n)} />
+                  <PageCanvas slug={slug} n={n} width={W} height={W * ratioOf(n)} delay={90} onRatio={onRatio} onExpired={onExpired} marked={bm.marks.has(n)} text={text} />
                   {printed && labelOf(labels, n) !== "" && <span className="tnum pointer-events-none absolute inset-x-0 text-center text-[12px] text-muted" style={{ top: W * ratioOf(n) + 4 }} data-testid="page-caption" aria-hidden="true">{/^(\d+|[ivxlcdm]+)$/i.test(labelOf(labels, n)) ? `Pág. ${labelOf(labels, n)}` : labelOf(labels, n)}</span>}
                 </div>
               ))}
@@ -491,7 +520,7 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
         {!ready && pdf && <div ref={scroller} className="absolute inset-0 grid place-items-center"><div className="skeleton h-48 w-36 rounded-card" aria-label="Cargando" /></div>}
         {ready && !pdf && (
           <BookMode
-            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect} marks={bm.marks} nameOf={printed ? name : undefined}
+            ref={book} slug={slug} pageCount={pageCount} page={page} ratio={ratio0} box={box} effect={effect} marks={bm.marks} nameOf={printed ? name : undefined} text={text} select={select}
             onPage={(n) => { setPage(n); setOffer(0); }}
             onExpired={onExpired}
           />

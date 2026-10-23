@@ -14,8 +14,17 @@ node e2e/buttons.mjs    # hover, pulsado, foco, carga, táctil y movimiento redu
 Mantenimiento (`/admin` → «Actualizar base de datos»): necesita un servidor cuya hoja simulada no tenga una pestaña y dos columnas. El encabezado simulado vive en memoria, así que reinicia el servidor para repetirla.
 
 ```bash
-MOCK_MISSING_TABS=bookmarks MOCK_MISSING_COLUMNS=original_pdf_size,original_pdf_pages DATA_BACKEND=mock npx next dev -p 3100
+MOCK_MISSING_TABS=bookmarks MOCK_MISSING_COLUMNS=text_pages,allow_copy DATA_BACKEND=mock npx next dev -p 3100
 node e2e/maintenance.mjs                # SCREENSHOTS=1 guarda capturas en screenshots/
+```
+
+Texto seleccionable (subida con texto, capa del lector, copiar, alineación, «Extraer texto», reanudar, OCR, `allow_copy`, seguridad) y rendimiento:
+
+```bash
+DATA_BACKEND=mock npx next dev -p 3100
+node e2e/text.mjs                       # SCREENSHOTS=1 guarda capturas en screenshots/
+node e2e/perf-turn.mjs                  # fps al pasar página (doble página y móvil)
+npm run build && node e2e/bundle-size.mjs   # tamaño del JS del lector; comprueba que no lleva pdf.js ni tesseract.js
 ```
 
 `BASE` (por defecto `http://localhost:3100`) y `CHROME_PATH` se pueden cambiar con variables de entorno.

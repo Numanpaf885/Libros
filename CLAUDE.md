@@ -10,7 +10,7 @@ Next.js App Router, React 19, TypeScript (strict, `noUnusedLocals`/`noUnusedPara
 
 ## Rules
 - `lib/db/*` and `lib/storage/*` start with `import "server-only"`: never import them from a client component.
-- `pdfjs-dist` is loaded with a dynamic `import()` only in `lib/client/render-pdf.ts` (admin upload/replace).
+- `pdfjs-dist` (its legacy build) is loaded with a dynamic `import()` only in `lib/client/render-pdf.ts` (admin upload/replace/"Extraer texto"). `tesseract.js` is loaded only in `lib/client/ocr.ts` (admin OCR); its files are self-hosted in `public/ocr/` (copied from node_modules by `scripts/copy-ocr-assets.mjs`). The reader bundle must contain neither: check with `node e2e/bundle-size.mjs` after `npm run build`.
 - Texts for users are Spanish (Spain), addressed as "tú".
 - New tabs or columns: add them ONLY to the shared schema in `lib/sheet-schema.ts` (a new tab in `TABS`, a new column at the END of its tab's `EXTRA_COLS`, never in the middle or renamed). `npm run setup-sheet` and /admin → Mantenimiento → «Actualizar base de datos» both apply it; the code must keep working (feature hidden) until the column or tab exists.
 - Never print or commit values from `.env.local`. Do not delete `.env.local`, `.data/` or `screenshots/`.

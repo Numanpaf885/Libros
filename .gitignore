@@ -58,5 +58,8 @@ credentials*.json
 # perf measurements
 /.perf/
 
+# OCR files copied from node_modules (scripts/copy-ocr-assets.mjs)
+/public/ocr/
+
 # Impeccable design tooling (local only)
 /.impeccable/

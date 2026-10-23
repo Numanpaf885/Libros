@@ -5,6 +5,8 @@ import Icon from "@/components/ui/Icon";
 import { getFace, holdFaces, prepareFace, trimFaces } from "@/lib/client/faces";
 import { loadPage, peekPage, trimPages, Unauthorized } from "@/lib/client/pages";
 import { pageOfUnit, pagesOfUnit, realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
+import { hasTextSelection, holdText } from "@/lib/client/text";
+import TextLayer from "./TextLayer";
 
 export type PageEffect = "turn" | "slide" | "none";
 export interface BookHandle { turn(dir: 1 | -1): void }
@@ -21,6 +23,10 @@ interface Props {
   marks?: ReadonlySet<number>;
   /** printed number of a file page, for screen readers (default: the file page itself) */
   nameOf?: (n: number) => string;
+  /** the book has selectable text: lay it over the pages on screen */
+  text?: boolean;
+  /** "Seleccionar texto": a mouse drag selects text instead of turning the page (the arrows still turn) */
+  select?: boolean;
   onPage: (n: number) => void;
   onExpired: () => void;
 }
@@ -42,7 +48,7 @@ const idle = (fn: () => void) => {
 };
 
 /** One page: its canvas (never an <img>), drawn before it is ever shown, or a shimmering skeleton. */
-function PageFace({ slug, n, w, h, version, failed, marked, side }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean; marked: boolean; side: "l" | "r" }) {
+function PageFace({ slug, n, w, h, version, failed, marked, side, text }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean; marked: boolean; side: "l" | "r"; text: boolean }) {
   const wrap = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -56,8 +62,17 @@ function PageFace({ slug, n, w, h, version, failed, marked, side }: { slug: stri
     <div ref={wrap} className="page-face page-skeleton absolute inset-0 overflow-hidden" data-page={n}>
       {marked && <span className={`bm-ribbon ${side === "l" ? "bm-ribbon-l" : ""}`} data-testid="bookmark-ribbon" aria-hidden="true" />}
       {failed && <p className="absolute inset-0 grid place-items-center p-4 text-center text-sm text-muted">No se ha podido cargar esta página.</p>}
+      {text && <FaceText slug={slug} n={n} w={w} h={h} />}
     </div>
   );
+}
+/** The text layer over the image as the face draws it: fitted inside w x h and centred (see lib/client/faces.ts). */
+function FaceText({ slug, n, w, h }: { slug: string; n: number; w: number; h: number }) {
+  const bmp = peekPage(slug, n);
+  if (!bmp) return null;
+  const r = bmp.height / bmp.width;
+  const dw = r > h / w ? h / r : w, dh = dw * r;
+  return <div className="absolute" style={{ left: (w - dw) / 2, top: (h - dh) / 2, width: dw, height: dh }}><TextLayer slug={slug} n={n} width={dw} ratio={r} /></div>;
 }
 
 /** A pre-made gradient layer: only its opacity is animated (never box-shadow or filter). */
@@ -65,7 +80,7 @@ function Shade({ r, side, dark = 0.38 }: { r: (e: HTMLDivElement | null) => void
   return <div ref={r} data-shade className="pointer-events-none absolute inset-0" style={{ opacity: 0, background: `linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(0,0,0,${dark}), rgba(0,0,0,0) 55%)` }} />;
 }
 
-const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, marks, nameOf, onPage, onExpired }, handle) {
+const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCount, page, ratio, box, effect, marks, nameOf, text = false, select = false, onPage, onExpired }, handle) {
   const wide = box.w >= 1024 && box.w > box.h;
   const total = unitCount(pageCount, wide);
   const [unit, setUnit] = useState(() => clamp(unitOf(page, wide), 0, total - 1));
@@ -101,7 +116,8 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
     const f = () => busy.current || animating.current;
     turning = f;
     holdFaces(f);
-    return () => { if (turning === f) { turning = () => false; holdFaces(() => false); } };
+    holdText(f);
+    return () => { if (turning === f) { turning = () => false; holdFaces(() => false); holdText(() => false); } };
   }, []);
   // render counter (read by the performance tests: it must not move while a page turns)
   useLayoutEffect(() => { if (stage.current) stage.current.dataset.renders = String(++renders.current); });
@@ -184,6 +200,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
       anims.current = [];
       animating.current = false;
       dirRef.current = 0;
+      delete stage.current?.dataset.turning;
       const to = unitRef.current + dir;
       if (committed && dir) {
         // One React commit AFTER the animation: the rig is rebuilt for the new unit (keyed), nothing flickers.
@@ -279,6 +296,8 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
     dirRef.current = dir;
     pRef.current = 0;
     busy.current = true;
+    // the text layers are invisible anyway: hidden while the page turns, the turning leaves carry no text to draw
+    if (stage.current) stage.current.dataset.turning = "1";
     const z = els.current;
     if (z.leafL && z.leafR) { z.leafR.style.zIndex = dir === 1 ? "3" : "2"; z.leafL.style.zIndex = dir === 1 ? "2" : "3"; }
     for (const k of Object.keys(stylesAt(dir, 0.5))) {
@@ -343,11 +362,13 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   }, [wide]);
 
   // ---- gestures: the drag follows the finger (rAF + direct style writes, no React state); edge taps turn ----
-  const g = useRef<{ id: number; x0: number; y0: number; t0: number; dir: 0 | 1 | -1; hist: { t: number; p: number }[]; moved: boolean } | null>(null);
+  const g = useRef<{ id: number; x0: number; y0: number; t0: number; dir: 0 | 1 | -1; hist: { t: number; p: number }[]; moved: boolean; selecting: boolean } | null>(null);
   const range = effect === "slide" ? sw * 0.9 : wide ? pw * 1.5 : pw * 0.95;
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || g.current) return;
-    g.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), dir: 0, hist: [], moved: false };
+    if (text && select && e.pointerType === "mouse") return; // "Seleccionar texto": the mouse selects, the arrows turn
+    // while text is selected (a long-press on a phone) a swipe does not turn: the first touch only clears the selection
+    g.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), dir: 0, hist: [], moved: false, selecting: text && hasTextSelection() };
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
   };
   const onMove = (e: React.PointerEvent) => {
@@ -358,7 +379,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
     if (!s.dir) {
       if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) { if (Math.abs(dy) > 12 || Math.abs(dx) > 12) s.moved = true; return; }
       s.moved = true;
-      if (effect === "none" || busy.current) return;
+      if (effect === "none" || busy.current || s.selecting || (text && hasTextSelection())) return;
       const dir: 1 | -1 = dx < 0 ? 1 : -1;
       const to = unitRef.current + dir;
       if (to < 0 || to >= total) return;
@@ -396,7 +417,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
       animate({ target: commit ? 1 : 0, v0: v, kind: "spring", fast: false });
       return;
     }
-    if (s.moved || performance.now() - s.t0 > 600) return;
+    if (s.moved || s.selecting || performance.now() - s.t0 > 600) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const rel = (e.clientX - rect.left) / rect.width;
     if (rel < 0.2) requestTurn(-1);
@@ -411,7 +432,9 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   useEffect(() => () => { cancelAnimationFrame(raf.current); cancelAnimationFrame(dragRaf.current); }, []);
 
   // ---- render: everything a turn needs is mounted BEFORE it starts (keyed by unit, rebuilt once after each turn) ----
-  const face = (n: number | null) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} marked={!!marks?.has(n)} side={wide && n % 2 === 0 ? "l" : "r"} />);
+  // Only the pages on screen get a text layer (never the faces that show only while a page turns), so a selection
+  // can never take in the text of a hidden page.
+  const face = (n: number | null, onScreen = false) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} marked={!!marks?.has(n)} side={wide && n % 2 === 0 ? "l" : "r"} text={text && onScreen} />);
   const slotCls = "absolute top-0 overflow-hidden bg-white outline outline-1 -outline-offset-1 outline-line";
   const pgs = (u: number) => pagesOfUnit(u, wide, pageCount);
   const [cl, cr] = pgs(unit);
@@ -426,11 +449,11 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
         <div ref={r("uL")} className={slotCls} style={{ left: 0, width: pw, height: ph, ...hide(pl) }}>{face(pl)}<Shade r={r("uLsh")} side="right" /></div>
         <div ref={r("uR")} className={slotCls} style={{ left: pw, width: pw, height: ph, ...hide(nr) }}>{face(nr)}<Shade r={r("uRsh")} side="left" /></div>
         <div ref={r("leafL")} className="book-leaf absolute top-0" style={{ left: 0, width: pw, height: ph, transformOrigin: "right center", transformStyle: "preserve-3d", zIndex: 2 }}>
-          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cl) }}>{face(cl)}<Shade r={r("lFs")} side="left" dark={0.45} /><Shade r={r("lOther")} side="right" /></div>
+          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cl) }}>{face(cl, true)}<Shade r={r("lFs")} side="left" dark={0.45} /><Shade r={r("lOther")} side="right" /></div>
           <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, transform: "rotateY(180deg)", ...hide(pr) }}>{face(pr)}<Shade r={r("lBs")} side="right" dark={0.45} /></div>
         </div>
         <div ref={r("leafR")} className="book-leaf absolute top-0" style={{ left: pw, width: pw, height: ph, transformOrigin: "left center", transformStyle: "preserve-3d", zIndex: 2 }}>
-          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cr) }}>{face(cr)}<Shade r={r("rFs")} side="right" dark={0.45} /><Shade r={r("rOther")} side="left" /></div>
+          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cr) }}>{face(cr, true)}<Shade r={r("rFs")} side="right" dark={0.45} /><Shade r={r("rOther")} side="left" /></div>
           <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, transform: "rotateY(180deg)", ...hide(nl) }}>{face(nl)}<Shade r={r("rBs")} side="left" dark={0.45} /></div>
         </div>
       </>
@@ -440,7 +463,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
       <>
         <div ref={r("uN")} className={slotCls} style={{ left: 0, width: pw, height: ph, ...hide(nr) }}>{face(nr)}<Shade r={r("uNsh")} side="left" /></div>
         <div ref={r("lC")} className="book-leaf absolute top-0" style={{ left: 0, width: pw, height: ph, transformOrigin: "left center", zIndex: 2 }}>
-          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cr) }}>{face(cr)}<Shade r={r("lCdest")} side="left" /><Shade r={r("lCfs")} side="left" dark={0.45} /></div>
+          <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(cr) }}>{face(cr, true)}<Shade r={r("lCdest")} side="left" /><Shade r={r("lCfs")} side="left" dark={0.45} /></div>
         </div>
         <div ref={r("lP")} className="book-leaf absolute top-0" style={{ left: 0, width: pw, height: ph, transformOrigin: "left center", zIndex: 3, transform: `rotateY(${-ANGLE_SINGLE}deg)`, opacity: 0, pointerEvents: "none" }}>
           <div className={`book-face ${slotCls}`} style={{ left: 0, width: pw, height: ph, ...hide(pr) }}>{face(pr)}<Shade r={r("lPfs")} side="left" dark={0.45} /></div>
@@ -451,8 +474,8 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
     // "Deslizar" / "Ninguno": three units side by side in a clipped frame; the track slides (one element, transform only)
     const cell = (l: number | null, rr: number | null, i: number) => (
       <div key={i} className="relative shrink-0" style={{ width: sw, height: ph }}>
-        {wide && l !== null && <div className={slotCls} style={{ left: 0, width: pw, height: ph }}>{face(l)}</div>}
-        {rr !== null && <div className={slotCls} style={{ left: wide ? pw : 0, width: pw, height: ph }}>{face(rr)}</div>}
+        {wide && l !== null && <div className={slotCls} style={{ left: 0, width: pw, height: ph }}>{face(l, i === 1)}</div>}
+        {rr !== null && <div className={slotCls} style={{ left: wide ? pw : 0, width: pw, height: ph }}>{face(rr, i === 1)}</div>}
       </div>
     );
     rig = (
@@ -470,7 +493,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   const arrow = "press absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-fg transition-opacity disabled:pointer-events-none disabled:opacity-25";
   const arrowBg = outside ? "hover:bg-fg/10" : "bg-bg/75 shadow-[0_1px_4px_rgba(0,0,0,0.25)]";
   return (
-    <div ref={stage} className="absolute inset-0 cursor-grab active:cursor-grabbing" data-renders="0">
+    <div ref={stage} className={`absolute inset-0 ${text && select ? "" : "cursor-grab active:cursor-grabbing book-no-select"}`} data-renders="0">
       <div
         className="absolute inset-0 touch-none overflow-hidden"
         style={{ overscrollBehavior: "none" }}

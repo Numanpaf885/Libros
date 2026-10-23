@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import BookClient from "@/components/book/BookClient";
+import { readerHasText } from "@/lib/book-text";
 import { getBookBySlug } from "@/lib/db/repo";
 import { SITE_CONTACT, SITE_NAME } from "@/lib/site";
 
@@ -16,7 +17,7 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   // Public presentation fields only. Never keys, prefixes or hashes.
   return (
     <BookClient
-      book={{ slug: book.slug, title: book.title, author: book.author, category: book.category, year: book.year, description: book.description, pageCount: book.page_count, pageLabels: book.page_labels }}
+      book={{ slug: book.slug, title: book.title, author: book.author, category: book.category, year: book.year, description: book.description, pageCount: book.page_count, pageLabels: book.page_labels, text: await readerHasText(book) }}
       contact={SITE_CONTACT}
       siteName={SITE_NAME}
     />

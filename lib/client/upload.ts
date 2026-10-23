@@ -2,6 +2,8 @@
 import { api } from "./api";
 import { imagesFingerprint, openImages, type ImagePlan } from "./images";
 import { COVER_W, openPdf, type OpenPdf } from "./render-pdf";
+import { ChunkWriter, finishText, textState } from "./text-store";
+import { chunkCount, chunkOf, TEXT_CHUNK } from "@/lib/text-layer";
 
 const BATCH = 20; // presigned URLs requested per call
 const PARALLEL = 4; // simultaneous PUTs
@@ -25,6 +27,8 @@ export interface FlowOptions {
   meta?: { title: string; description: string; author?: string; category?: string; year?: string };
   /** status to apply when the upload completes */
   status: "published" | "draft";
+  /** also store the text of each page for the readers' selectable layer (PDFs only; the sheet must have the text columns) */
+  text?: boolean;
   onProgress: (p: Progress) => void;
   signal: AbortSignal;
 }
@@ -98,13 +102,37 @@ async function uploadMissing(pdf: PageSource, bookId: string, o: FlowOptions) {
   };
   report();
 
+  // The text of the pages is an extra step: the chunks already stored are skipped (so a resumed upload reads only the
+  // text that is missing) and any failure here only stops the text, never the page images.
+  let text: ChunkWriter | null = null;
+  let textStarted = false;
+  const textDone = new Set<number>();
+  if (o.text && pdf.text) {
+    try {
+      const s = await textState(bookId);
+      if (s.ready) {
+        text = new ChunkWriter(bookId, pdf.pageCount, o.signal);
+        textStarted = true;
+        for (let k = 0; k < chunkCount(pdf.pageCount); k++) if (s.pages[k * TEXT_CHUNK] !== "-") textDone.add(k);
+      }
+    } catch { text = null; }
+  }
+  const needText = (n: number) => text !== null && !textDone.has(chunkOf(n));
+  const order = [...todo];
+  for (let n = 1; n <= pdf.pageCount; n++) if (have.has(n) && needText(n)) order.push(n);
+  order.sort((a, b) => a - b);
+
   const src = new UrlSource(bookId, todo, o.signal);
   const inflight = new Set<Promise<void>>();
   let failure: unknown = null;
 
-  for (const page of todo) {
+  for (const page of order) {
     o.signal.throwIfAborted();
     if (failure) break;
+    if (page > 0 && needText(page)) {
+      try { await text!.add(page, (await pdf.text!(page)) ?? []); } catch (e) { if (o.signal.aborted) throw e; text = null; }
+    }
+    if (page > 0 && have.has(page)) continue; // only its text was missing
     while (inflight.size >= PARALLEL) await Promise.race(inflight); // backpressure: render only when a slot is free
     if (failure) break;
     const blob = page === 0 && pdf.renderCover ? await pdf.renderCover(COVER_W) : await pdf.render(page === 0 ? 1 : page, page === 0 ? COVER_W : undefined);
@@ -119,6 +147,7 @@ async function uploadMissing(pdf: PageSource, bookId: string, o: FlowOptions) {
   await Promise.all(inflight);
   if (failure) throw failure;
   o.signal.throwIfAborted();
+  if (textStarted) await finishText(bookId).catch(() => {}); // text_status / text_pages of the book, from the chunks stored
 }
 
 /**
