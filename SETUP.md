@@ -28,7 +28,7 @@ Open <http://localhost:3000/admin>. Mock mode seeds one admin: username `admin`,
 
 1. Create a new, empty Google Sheet. Copy its ID from the URL: `https://docs.google.com/spreadsheets/d/<THIS_PART>/edit` → `SHEET_ID`.
 2. Click **Share**, paste the service account email (`client_email`), give it **Editor** access, and untick "notify".
-3. Create the tabs automatically (after step 5 below, so your env vars exist): `npm run setup-sheet`. It creates any missing tab (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`) and any missing header name. On an existing tab it only appends missing headers at the end of row 1: it never reorders columns or touches your rows.
+3. Create the tabs automatically (after step 5 below, so your env vars exist): `npm run setup-sheet`. It creates any missing tab (`books`, `access_codes`, `admins`, `users`, `user_books`, `progress`, `passkeys`, `bookmarks`) and any missing header name. On an existing tab it only appends missing headers at the end of row 1: it never reorders columns or touches your rows. Once the site is running you can do the same from the website: `/admin` → **Mantenimiento** → **Actualizar base de datos** (see below).
 4. Add yourself as admin. Run `npm run hash-password`, type a password (10+ characters), and copy the `$2b$12$…` hash it prints. In the `admins` tab, row 2: column A = username, column B = that hash.
    - If Sheets turns the hash into something odd, format column B as **Plain text** first.
    - The sheet holds only hashes: password hashes and code hashes. Do not share the Sheet with anyone you do not trust.
@@ -107,6 +107,10 @@ The upload and edit forms have optional **Autor**, **Categoría** and **Año** f
 ## Codes you choose yourself
 
 In a book's **Códigos** panel pick **Aleatorios** (generated) or **Los elijo yo** (e.g. `AMINA2026`): 6 to 32 characters, letters, numbers and hyphens, not case-sensitive, unique within the book. **Cambiar código** swaps a code for a new one (typed or random) and the old one stops working at once, even for people already reading. The share link is built from the address you are using when you click **Copiar enlace**, so on your computer it is `http://localhost:3000/...` and on the live site it is your real domain. A book must be **Publicado** before readers can open it; the panel says so and has a one-click **Publicar** button.
+
+## Mantenimiento: updating the Sheet from the website
+
+New features sometimes need a new tab or a new column in the Sheet. Instead of running `npm run setup-sheet` on your computer, open `/admin` → **Mantenimiento** and click **Actualizar base de datos**. It does exactly what the script does, on the server: it creates any missing tab and writes any missing header name at the END of row 1. It never reorders, renames or deletes anything and never touches your data rows; running it again changes nothing and says **Todo al día**. The **Estado** table below the button shows every tab, its columns and what is missing. It can run 3 times a minute (it uses Google Sheets quota). Features that use the new columns appear at once; other server instances on Vercel notice within about 5 minutes.
 
 ## Things worth knowing
 

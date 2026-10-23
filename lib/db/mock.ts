@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import bcrypt from "bcryptjs";
+import { expectedColumns, type SheetAdmin } from "../sheet-schema";
 import type { Table, TabName } from "./table";
 import { EXTRA_COLS, TABS } from "./table";
 
@@ -57,15 +58,26 @@ function op(kind: "read" | "write", tab: string, n = 1) {
   } catch { /* ignore */ }
 }
 const matches = (r: string[], m: [number, string][]) => m.every(([c, v]) => r[c] === v);
-// Tests only: MOCK_MISSING_TABS=bookmarks behaves like a Sheet without that tab (Google answers 400 "Unable to parse range").
-const missing = (tab: string) => (process.env.MOCK_MISSING_TABS ?? "").split(",").some((t) => t && tab.split("+").includes(t.trim()));
-// Tests only: MOCK_MISSING_COLUMNS=can_download behaves like a `users` tab that has not got that column yet.
-const columnMissing = (name: string) => (process.env.MOCK_MISSING_COLUMNS ?? "").split(",").some((c) => c.trim() === name);
+// Row 1 of each tab. The mock stores no header row, so it is simulated here, in memory: every tab and column of the
+// schema, except what the test flags leave out. MOCK_MISSING_TABS=bookmarks behaves like a Sheet without that tab
+// (Google answers 400 "Unable to parse range"); MOCK_MISSING_COLUMNS=can_download like a `users` tab that has not got
+// that column yet. "Actualizar base de datos" (mockSheetAdmin below) fills them in; a restart starts again from the flags.
+const flag = (name: string) => (process.env[name] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const gh = globalThis as unknown as { __mockHeaders?: Record<string, string[]> };
+function headerState(): Record<string, string[]> {
+  if (!gh.__mockHeaders) {
+    const tabs = flag("MOCK_MISSING_TABS"), cols = flag("MOCK_MISSING_COLUMNS");
+    gh.__mockHeaders = Object.fromEntries((Object.keys(TABS) as TabName[]).filter((t) => !tabs.includes(t)).map((t) => [t, expectedColumns(t).filter((c) => !cols.includes(c))]));
+  }
+  return gh.__mockHeaders;
+}
+const missing = (tab: string) => tab.split("+").some((t) => !headerState()[t]);
 /** Rows of a tab as the real Sheets backend would return/store them (without columns the sheet does not have). */
 function width(tab: string): number {
+  const head = headerState()[tab] ?? [];
   let w = TABS[tab as TabName].length;
   for (const name of (EXTRA_COLS as Record<string, readonly string[]>)[tab] ?? []) {
-    if (columnMissing(name)) break;
+    if (head[w] !== name) break;
     w++;
   }
   return w;
@@ -172,9 +184,7 @@ export const mockTable: Table = {
     return true;
   },
   async hasColumn(tab, index, name) {
-    const base = TABS[tab as TabName].length;
-    const extra = (EXTRA_COLS as Record<string, readonly string[]>)[tab] ?? [];
-    return extra[index - base] === name && index - base < width(tab) - base;
+    return headerState()[tab]?.[index] === name;
   },
   async deleteWhere(tab, col, value) {
     op("read", tab, 2);
@@ -188,3 +198,27 @@ export const mockTable: Table = {
   },
 };
 void TABS;
+
+/** "Actualizar base de datos" in mock mode: it changes only the simulated row 1 above, never a stored row. */
+export const mockSheetAdmin: SheetAdmin = {
+  async tabs() {
+    op("read", "meta");
+    return Object.keys(headerState());
+  },
+  async headerRows(tabs) {
+    op("read", tabs.join("+"));
+    return Object.fromEntries(tabs.map((t) => [t, [...(headerState()[t] ?? [])]]));
+  },
+  async createTabs(tabs) {
+    op("write", "meta");
+    for (const t of tabs) headerState()[t] ??= [];
+  },
+  async writeHeaders(cells) {
+    op("write", cells.map((c) => c.tab).join("+"));
+    for (const c of cells) {
+      const row = (headerState()[c.tab] ??= []);
+      while (row.length < c.from - 1) row.push("");
+      c.names.forEach((n, i) => { row[c.from - 1 + i] = n; });
+    }
+  },
+};
