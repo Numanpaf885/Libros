@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { drawPage, loadPage, Unauthorized } from "@/lib/client/pages";
+import TextLayer from "./TextLayer";
 
 interface Props {
   slug: string;
@@ -13,10 +14,12 @@ interface Props {
   onExpired: () => void;
   /** the page has a bookmark: show the ribbon */
   marked?: boolean;
+  /** the book has selectable text: lay it over the page */
+  text?: boolean;
 }
 
 /** Mounted only while its page is near the viewport; unmounting frees the pixel buffer. */
-export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio, onExpired, marked = false }: Props) {
+export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio, onExpired, marked = false, text = false }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -46,6 +49,8 @@ export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio,
       {marked && <span className="bm-ribbon" data-testid="bookmark-ribbon" aria-hidden="true" />}
       {failed && <p className="absolute inset-0 grid place-items-center p-4 text-center text-sm text-muted">No se ha podido cargar esta página.</p>}
       <canvas ref={canvas} aria-label={`Página ${n}`} className={`block h-full w-full transition-opacity duration-150 ${loaded ? "opacity-100" : "opacity-0"}`} />
+      {/* inside the 1 px border, like the canvas */}
+      {text && loaded && <TextLayer slug={slug} n={n} width={width - 2} ratio={(height - 2) / (width - 2)} />}
     </div>
   );
 }

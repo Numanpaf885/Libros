@@ -51,14 +51,14 @@ Page images live in a private R2 bucket. Nothing is public: readers only ever ge
   {
     "AllowedOrigins": ["https://your-site.example.com", "http://localhost:3000"],
     "AllowedMethods": ["PUT", "GET"],
-    "AllowedHeaders": ["Content-Type"],
+    "AllowedHeaders": ["Content-Type", "Range"],
     "ExposeHeaders": [],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
 
-   The origin must match exactly (scheme + host + port, no trailing slash). If you use a Vercel preview URL, add it too. Without this rule, uploads and page loads fail with a CORS error in the browser console.
+   The origin must match exactly (scheme + host + port, no trailing slash). If you use a Vercel preview URL, add it too. Without this rule, uploads and page loads fail with a CORS error in the browser console. `Range` lets **Extraer texto** read a stored original PDF in pieces (see "Texto seleccionable" below); without it, that button says it cannot read the stored PDF and you can still choose the PDF from your computer.
 
 ## 4. Session secret
 
@@ -112,6 +112,18 @@ In a book's **Códigos** panel pick **Aleatorios** (generated) or **Los elijo yo
 
 New features sometimes need a new tab or a new column in the Sheet. Instead of running `npm run setup-sheet` on your computer, open `/admin` → **Mantenimiento** and click **Actualizar base de datos**. It does exactly what the script does, on the server: it creates any missing tab and writes any missing header name at the END of row 1. It never reorders, renames or deletes anything and never touches your data rows; running it again changes nothing and says **Todo al día**. The **Estado** table below the button shows every tab, its columns and what is missing. It can run 3 times a minute (it uses Google Sheets quota). Features that use the new columns appear at once; other server instances on Vercel notice within about 5 minutes.
 
+## Texto seleccionable (select and copy text)
+
+Readers can select the text of the pages and copy it (Ctrl/Cmd+C, or the context menu; a long-press "Copiar" on phones), like in a PDF viewer. The page images do not change: an invisible text layer lies exactly over them. Saving and printing stay blocked.
+
+1. Open `/admin` → **Mantenimiento** → **Actualizar base de datos** once. It adds three columns at the end of the `books` tab: `text_status` (none / partial / full), `text_pages` and `allow_copy`. Until they exist, nothing about the text is shown anywhere and the reader works exactly as before.
+2. **New PDF uploads** store the text of every page as they upload (an extra step; an interrupted upload continues with the text that is missing).
+3. **Existing books:** in the book's row, **Texto** → **Extraer texto**. It reads the stored original PDF (if the book has one) or the PDF you choose on your computer; it has to have the book's page count, or it is refused. **Volver a extraer** does it again from scratch.
+4. **Scanned pages** (and books made from images) have no text in the PDF: the panel says "N páginas sin texto (escaneadas)" and offers **Reconocer texto (OCR)**. It recognises the page images in your browser (Spanish and English; the files come from this site, no CDN), shows the time left, can be paused, and continues where it stopped.
+5. **Permitir seleccionar y copiar texto** (on by default) is per book: switched off, readers get no text layer and copying does nothing.
+
+The text is stored in R2 next to the page images (`<book>/text/0001-0020.json`, 20 pages per file) and readers get it only through the same access check as the pages, with 60-second links. In Book mode a **Seleccionar texto** button (I-beam) next to Libro/PDF makes a mouse drag select text instead of turning the page; on phones a long-press always selects.
+
 ## Things worth knowing
 
 - **Codes are shown once.** They are stored hashed, so **Copiar enlace** only works right after you create or change them. To re-send one, use **Cambiar código** (keeps the label and expiry).
@@ -119,7 +131,7 @@ New features sometimes need a new tab or a new column in the Sheet. Instead of r
 - **Rate limiting** (5 failed attempts / 15 min / IP) is held in server memory. On Vercel each server instance has its own counter and counters reset when instances restart, so treat it as a speed bump, not a hard guarantee.
 - **Large books and resume:** books up to ~800 MB are read from your disk in pieces (never loaded whole). Use desktop Chrome. If an upload is interrupted, the book stays in status `uploading`; click **Continuar subida** on it and select the same PDF: only the missing pages are sent, and the book gets the status you chose at the start. A different file is refused. **Cancelar** stops an upload and keeps every page already sent.
 - **Vercel Hobby limits:** functions have a 4.5 MB request/response body limit. That is why page images go straight from your browser to R2. Each page image is far below that, and R2 uploads never touch a function anyway.
-- **Deterrents are deterrents.** Pages are drawn on a canvas and right-click, drag, selection, Ctrl/Cmd+S and printing are blocked, but a determined reader can still screenshot a page. Pages carry no per-reader marking.
+- **Deterrents are deterrents.** Pages are drawn on a canvas and right-click, drag, selection, Ctrl/Cmd+S and printing are blocked (only the text layer can be selected and copied, and only when the book allows it), but a determined reader can still screenshot a page. Pages carry no per-reader marking.
 
 
 ## Reader accounts (optional)

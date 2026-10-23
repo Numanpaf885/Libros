@@ -4,18 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "hash-password": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/hash-password.ts",
     "setup-sheet": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/setup-sheet.ts",
-    "e2e": "node e2e/overflow.mjs && node e2e/menu.mjs && node e2e/cursor.mjs && node e2e/buttons.mjs"
+    "e2e": "node e2e/overflow.mjs && node e2e/menu.mjs && node e2e/cursor.mjs && node e2e/buttons.mjs",
+    "postinstall": "node scripts/copy-ocr-assets.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",
     "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.3",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/spa": "^1.0.0",
     "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
     "googleapis": "^186.0.0",
@@ -25,6 +29,7 @@
     "pdfjs-dist": "^6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

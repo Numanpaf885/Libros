@@ -20,6 +20,7 @@ function sign(method: "GET" | "PUT", key: string, ttl: number): string {
   const exp = Math.floor(Date.now() / 1000) + ttl;
   return `/api/storage/local?k=${encodeURIComponent(key)}&e=${exp}&s=${mac(method, key, exp)}`;
 }
+// The content type is checked by /api/storage/local from the kind of key (pages WebP, text chunks JSON).
 export async function presignPut(key: string) {
   return sign("PUT", key, PUT_TTL_S);
 }
@@ -33,9 +34,14 @@ export function verifySigned(method: "GET" | "PUT", key: string, exp: number, si
   const b = Buffer.from(sig);
   return a.length === b.length && timingSafeEqual(a, b);
 }
-export function readLocal(key: string): fs.ReadStream | null {
+export function readLocal(key: string, range?: { start: number; end: number }): fs.ReadStream | null {
   const f = safe(key);
-  return fs.existsSync(f) ? fs.createReadStream(f) : null;
+  return fs.existsSync(f) ? fs.createReadStream(f, range) : null;
+}
+/** Size of a stored object (for Range requests), or null. */
+export function sizeLocal(key: string): number | null {
+  const f = safe(key);
+  return fs.existsSync(f) ? fs.statSync(f).size : null;
 }
 export function writeLocal(key: string, data: Buffer) {
   const f = safe(key);
@@ -63,6 +69,10 @@ export async function listSizes(prefix: string): Promise<Record<string, number>>
 export async function head(key: string): Promise<number | null> {
   const f = safe(key);
   return fs.existsSync(f) ? fs.statSync(f).size : null;
+}
+export async function readText(key: string): Promise<string | null> {
+  const f = safe(key);
+  return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null;
 }
 export async function deleteKey(key: string): Promise<void> {
   fs.rmSync(safe(key), { force: true });

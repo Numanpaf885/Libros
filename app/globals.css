@@ -10,6 +10,7 @@
   --muted: #5e5e59;
   --accent: #1e3a5f;
   --accent-fg: #ffffff;
+  --text-sel: rgba(30, 58, 95, 0.3); /* the accent at 30 %: selection over the page images */
   --danger: #b3261e;
   --ok: #1f7a3a;
   --muted-glass: #45453f; /* secondary text on the translucent bars: AA even over a dark cover or page */
@@ -30,6 +31,7 @@
   --muted: #a1a1a1;
   --accent: #8db4e2;
   --accent-fg: #111214;
+  --text-sel: rgba(141, 180, 226, 0.3);
   --danger: #f28b82;
   --ok: #7cc38d;
   --muted-glass: #d4d4d4;
@@ -43,7 +45,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #111214; --surface: #1a1b1e; --line: #2a2c30; --line-strong: #6f727a; --fg: #ececec; --muted: #a1a1a1;
-    --accent: #8db4e2; --accent-fg: #111214; --danger: #f28b82; --ok: #7cc38d;
+    --accent: #8db4e2; --accent-fg: #111214; --text-sel: rgba(141, 180, 226, 0.3); --danger: #f28b82; --ok: #7cc38d;
     --muted-glass: #d4d4d4; --glass: rgba(17, 18, 20, 0.72); --glass-solid: #111214; --glass-line: rgba(255, 255, 255, 0.14);
     --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4); color-scheme: dark;
   }
@@ -189,6 +191,15 @@ input, textarea { caret-color: var(--accent); }
 .reader-root, .reader-root * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .reader-root canvas { -webkit-user-drag: none; }
 @media print { html, body { display: none !important; } }
+/* Selectable text over the page images: invisible, only its selection shows. The only part of the reader that selects. */
+.text-layer { position: absolute; left: 0; top: 0; z-index: 1; transform-origin: 0 0; line-height: 1; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; }
+.text-layer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; font-family: sans-serif; cursor: text; }
+.reader-root .text-layer, .reader-root .text-layer * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.text-layer ::selection, .text-layer::selection { background: var(--text-sel); color: transparent; }
+/* Book mode with "Seleccionar texto" off: a mouse drag turns the page (touch keeps long-press selection) */
+@media (pointer: fine) { .book-no-select .text-layer { pointer-events: none; } }
+/* Book mode: no text in the leaves while a page turns (it costs frames in a 3D turn and shows nothing) */
+.reader-root [data-turning] .text-layer { visibility: hidden; }
 
 
 /* ---- Translucent bars (site header, reader toolbar) ---- */

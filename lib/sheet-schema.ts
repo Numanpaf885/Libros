@@ -23,7 +23,7 @@ export const TABS = {
 /** Columns appended at the END of an existing tab later, in this order. The app uses one only once its header exists. */
 export const EXTRA_COLS = {
   users: ["can_download"],
-  books: ["page_labels", "original_pdf_size", "original_pdf_pages"],
+  books: ["page_labels", "original_pdf_size", "original_pdf_pages", "text_status", "text_pages", "allow_copy"],
   downloads: ["method"],
 } as const;
 export type TabName = keyof typeof TABS;

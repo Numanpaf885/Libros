@@ -61,13 +61,15 @@ const matches = (r: string[], m: [number, string][]) => m.every(([c, v]) => r[c]
 // Row 1 of each tab. The mock stores no header row, so it is simulated here, in memory: every tab and column of the
 // schema, except what the test flags leave out. MOCK_MISSING_TABS=bookmarks behaves like a Sheet without that tab
 // (Google answers 400 "Unable to parse range"); MOCK_MISSING_COLUMNS=can_download like a `users` tab that has not got
-// that column yet. "Actualizar base de datos" (mockSheetAdmin below) fills them in; a restart starts again from the flags.
+// that column yet, nor any column added after it. "Actualizar base de datos" (mockSheetAdmin below) fills them in; a
+// restart starts again from the flags.
 const flag = (name: string) => (process.env[name] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const gh = globalThis as unknown as { __mockHeaders?: Record<string, string[]> };
 function headerState(): Record<string, string[]> {
   if (!gh.__mockHeaders) {
     const tabs = flag("MOCK_MISSING_TABS"), cols = flag("MOCK_MISSING_COLUMNS");
-    gh.__mockHeaders = Object.fromEntries((Object.keys(TABS) as TabName[]).filter((t) => !tabs.includes(t)).map((t) => [t, expectedColumns(t).filter((c) => !cols.includes(c))]));
+    const upTo = (t: TabName) => { const all = expectedColumns(t); const i = all.findIndex((c) => cols.includes(c)); return i < 0 ? all : all.slice(0, i); };
+    gh.__mockHeaders = Object.fromEntries((Object.keys(TABS) as TabName[]).filter((t) => !tabs.includes(t)).map((t) => [t, upTo(t)]));
   }
   return gh.__mockHeaders;
 }

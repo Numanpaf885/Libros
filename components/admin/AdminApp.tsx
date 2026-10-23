@@ -24,6 +24,7 @@ import DownloadsPanel, { DownloadHistory } from "./DownloadsPanel";
 import ImagePicker, { useImagePlan } from "./ImagePicker";
 import MaintenancePanel from "./MaintenancePanel";
 import SourceSwitch, { type SourceKind } from "./SourceSwitch";
+import TextPanel from "./TextPanel";
 import UsersPanel from "./UsersPanel";
 
 const phoneQuery = "(max-width: 767px)";
@@ -62,13 +63,13 @@ function useUploader(onDone: () => void) {
   const [orig, setOrig] = useState<OriginalProgress | null>(null);
   const ctl = useRef<AbortController | null>(null);
 
-  /** `original`: also store the PDF itself (fast downloads). `extras`: the sheet has the columns that need. */
-  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft"; original?: boolean; extras?: boolean }) {
+  /** `original`: also store the PDF itself (fast downloads). `extras`: the sheet has the columns that need. `text`: also store the pages' text. */
+  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft"; original?: boolean; extras?: boolean; text?: boolean }) {
     const { original, extras, ...flow } = o;
     ctl.current = new AbortController();
     setBusy(true); setErr(""); setProgress(null); setOrig(null);
     try {
-      const bookId = await uploadFlow({ status: "draft", ...flow, onProgress: setProgress, signal: ctl.current.signal });
+      const bookId = await uploadFlow({ status: "draft", ...flow, text: !!flow.text && !!flow.file, onProgress: setProgress, signal: ctl.current.signal });
       toast("ok", "Libro subido correctamente");
       // After the pages are stored (the book is complete and usable): printed page numbers found in the PDF, then the original.
       if (flow.file && extras) {
@@ -112,7 +113,7 @@ function useUploader(onDone: () => void) {
   return { busy, progress, orig, err, start, cancel: () => ctl.current?.abort() };
 }
 
-function UploadCard({ onDone, phone, extras }: { onDone: () => void; phone: boolean; extras: boolean }) {
+function UploadCard({ onDone, phone, extras, text }: { onDone: () => void; phone: boolean; extras: boolean; text: boolean }) {
   const up = useUploader(onDone);
   const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
@@ -134,7 +135,7 @@ function UploadCard({ onDone, phone, extras }: { onDone: () => void; phone: bool
       onSubmit={async (e) => {
         e.preventDefault();
         if (source === "images" ? !imgs.plan : !file) return;
-        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year }, extras, original: extras && source === "pdf" && keepOriginal });
+        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year }, extras, text, original: extras && source === "pdf" && keepOriginal });
         setFile(null); setTitle(""); setDescription(""); setAuthor(""); setCategory(""); setYear("");
         imgs.reset();
         if (input.current) input.current.value = "";
@@ -224,10 +225,10 @@ const CHIP: Record<AdminBook["status"], [string, string]> = {
   draft: ["chip chip-draft", "Borrador"],
   uploading: ["chip chip-busy", "Subiendo"],
 };
-type PanelName = "edit" | "codes" | "replace" | "delete" | "history" | "original" | "numbering";
+type PanelName = "edit" | "codes" | "replace" | "delete" | "history" | "original" | "numbering" | "text";
 const GRID = "md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6.5rem_7rem_20rem] md:items-center md:gap-4";
 
-function BookRow({ book, reload, phone, dl, extras }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean; extras: boolean }) {
+function BookRow({ book, reload, phone, dl, extras, text }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean; extras: boolean; text: boolean }) {
   const toast = useToast();
   const [panel, setPanel] = useState<PanelName | null>(null);
   const [busy, setBusy] = useState(false);
@@ -240,9 +241,9 @@ function BookRow({ book, reload, phone, dl, extras }: { book: AdminBook; reload:
   const uploading = book.status === "uploading";
   /** resume an interrupted upload, continue a pending replacement, or start a replacement */
   const startReplace = (src: { file: File } | { images: ImagePlan }) =>
-    up.start(uploading ? { ...src, mode: "resume", bookId: book.id, extras }
-      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published", extras }
-      : { ...src, mode: "replace", bookId: book.id, extras });
+    up.start(uploading ? { ...src, mode: "resume", bookId: book.id, extras, text }
+      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published", extras, text }
+      : { ...src, mode: "replace", bookId: book.id, extras, text });
   const toggle = (p: PanelName) => setPanel(panel === p ? null : p);
   const [chipClass, chipText] = CHIP[book.status];
 
@@ -280,6 +281,7 @@ function BookRow({ book, reload, phone, dl, extras }: { book: AdminBook; reload:
               {dl && <button className="btn btn-sm" onClick={() => toggle("history")}>Historial</button>}
               {extras && <button className="btn btn-sm" onClick={() => toggle("original")}>PDF original</button>}
               {extras && <button className="btn btn-sm" onClick={() => toggle("numbering")}>Numeración</button>}
+              {text && <button className="btn btn-sm" onClick={() => toggle("text")}>Texto</button>}
             </>
           )}
           <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
@@ -353,6 +355,8 @@ function BookRow({ book, reload, phone, dl, extras }: { book: AdminBook; reload:
 
           {panel === "numbering" && extras && <PageNumbering book={book} onSaved={reload} />}
 
+          {panel === "text" && text && <TextPanel book={book} />}
+
           {panel === "codes" && <CodesPanel book={book} onBookChanged={reload} />}
         </div>
       )}
@@ -380,6 +384,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const [extras, setExtras] = useState(false); // the sheet has books.page_labels / original_pdf_* (original PDF + page numbering)
   const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
   const [schema, setSchema] = useState(0); // bumped when "Actualizar base de datos" changed the sheet: features are looked up again
+  const [text, setText] = useState(false); // the sheet has books.text_status / text_pages / allow_copy (selectable text)
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
@@ -397,6 +402,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   useEffect(() => {
     let dead = false;
     api<{ available: boolean }>("/api/admin/downloads?size=1").then((r) => { if (!dead) setDl(r.available); }).catch(() => {});
+    api<{ ready: boolean }>("/api/admin/text").then((r) => { if (!dead) setText(r.ready); }).catch(() => {});
     return () => { dead = true; };
   }, [schema]);
 
@@ -440,7 +446,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       ) : (
       <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
-      <UploadCard onDone={load} phone={phone} extras={extras} />
+      <UploadCard onDone={load} phone={phone} extras={extras} text={text} />
 
       {books === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-28 rounded-card" /></div>
@@ -454,7 +460,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
               <span role="columnheader">Título</span><span role="columnheader">Estado</span><span role="columnheader">Páginas</span><span role="columnheader">Actualizado</span><span role="columnheader" className="text-right">Acciones</span>
             </div>
             <ul role="rowgroup" className="space-y-3 md:space-y-0">
-              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} extras={extras} />)}
+              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} extras={extras} text={text} />)}
             </ul>
           </div>
         </section>

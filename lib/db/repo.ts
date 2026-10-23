@@ -38,11 +38,14 @@ const toBook = (r: string[]): Book => ({
   // columns added later: older rows simply do not have them
   author: r[9] ?? "", category: r[10] ?? "", year: r[11] ?? "",
   page_labels: r[12] ?? "", original_pdf_size: Number(r[13]) || 0, original_pdf_pages: Number(r[14]) || 0,
+  text_status: r[15] === "full" || r[15] === "partial" ? r[15] : "none", text_pages: Number(r[16]) || 0,
+  allow_copy: (r[17] ?? "").toUpperCase() !== "FALSE", // empty = the default (on)
 });
 const fromBook = (b: Book): string[] => [
   b.id, b.slug, b.title, b.description, String(b.page_count),
   b.storage_prefix, b.cover_path, b.status, b.updated_at, b.author, b.category, b.year,
   b.page_labels, b.original_pdf_size ? String(b.original_pdf_size) : "", b.original_pdf_pages ? String(b.original_pdf_pages) : "",
+  b.text_status === "none" ? "" : b.text_status, b.text_pages ? String(b.text_pages) : "", b.allow_copy ? "" : "FALSE",
 ];
 const toCode = (r: string[]): AccessCode => ({
   id: r[0], book_id: r[1], code_hash: r[2], label: r[3], created_at: r[4],
@@ -59,6 +62,11 @@ const fromCode = (c: AccessCode): string[] => [
 export async function bookExtrasReady(): Promise<boolean> {
   return table().hasColumn("books", 12, "page_labels");
 }
+/** The selectable text needs books.text_status / text_pages / allow_copy. Without them the reader shows no text layer. */
+export async function textColumnsReady(): Promise<boolean> {
+  const t = table();
+  return (await t.hasColumn("books", 15, "text_status")) && (await t.hasColumn("books", 16, "text_pages")) && (await t.hasColumn("books", 17, "allow_copy"));
+}
 
 export async function listBooks(): Promise<Book[]> {
   return (await cached("books")).filter((r) => r[0]).map(toBook);
@@ -69,8 +77,9 @@ export async function getBookBySlug(slug: string) {
 export async function getBookById(id: string) {
   return (await listBooks()).find((b) => b.id === id) ?? null;
 }
-export async function createBook(input: Omit<Book, "id" | "updated_at" | "author" | "category" | "year" | "page_labels" | "original_pdf_size" | "original_pdf_pages"> & Partial<Pick<Book, "author" | "category" | "year" | "page_labels" | "original_pdf_size" | "original_pdf_pages">>) {
-  const book: Book = { author: "", category: "", year: "", page_labels: "", original_pdf_size: 0, original_pdf_pages: 0, ...input, id: randomUUID(), updated_at: new Date().toISOString() };
+type Optional = "author" | "category" | "year" | "page_labels" | "original_pdf_size" | "original_pdf_pages" | "text_status" | "text_pages" | "allow_copy";
+export async function createBook(input: Omit<Book, "id" | "updated_at" | Optional> & Partial<Pick<Book, Optional>>) {
+  const book: Book = { author: "", category: "", year: "", page_labels: "", original_pdf_size: 0, original_pdf_pages: 0, text_status: "none", text_pages: 0, allow_copy: true, ...input, id: randomUUID(), updated_at: new Date().toISOString() };
   await table().append("books", fromBook(book));
   bust("books");
   return book;

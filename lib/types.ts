@@ -19,7 +19,13 @@ export interface Book {
   /** books.original_pdf_size / original_pdf_pages (columns added later): the stored original PDF; 0 = none. */
   original_pdf_size: number;
   original_pdf_pages: number;
+  /** books.text_status / text_pages / allow_copy (columns added later): the selectable text layer. Defaults: none, 0, true. */
+  text_status: TextStatus;
+  text_pages: number;
+  allow_copy: boolean;
 }
+/** none: no page has text; partial: some pages still lack it (scans not recognised yet); full: every page was processed. */
+export type TextStatus = "none" | "partial" | "full";
 
 export interface AccessCode {
   id: string;

@@ -36,6 +36,7 @@ const P = {
   star: "M12 4l2.4 5 5.6.7-4.1 3.8 1.1 5.5L12 16.3 7 19l1.1-5.5L4 9.7 9.6 9z",
   image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9.5h.01",
   more: "M4.5 12a1 1 0 102 0 1 1 0 10-2 0M11 12a1 1 0 102 0 1 1 0 10-2 0M17.5 12a1 1 0 102 0 1 1 0 10-2 0",
+  textCursor: "M9 4.5c1.5 0 3 .5 3 2v11c0 1.5-1.5 2-3 2M15 4.5c-1.5 0-3 .5-3 2M15 19.5c-1.5 0-3-.5-3-2M10 12h4",
 } as const;
 export type IconName = keyof typeof P;
 export default function Icon({ name, size = 20, className = "", filled = false }: { name: IconName; size?: number; className?: string; filled?: boolean }) {
