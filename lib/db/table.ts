@@ -29,21 +29,6 @@ export interface Table {
   hasColumn(tab: string, index: number, name: string): Promise<boolean>;
 }
 
-export const TABS = {
-  books: ["id", "slug", "title", "description", "page_count", "storage_prefix", "cover_path", "status", "updated_at", "author", "category", "year"],
-  access_codes: ["id", "book_id", "code_hash", "label", "created_at", "expires_at", "revoked"],
-  admins: ["username", "password_hash"],
-  users: ["id", "username", "display_name", "password_hash", "status", "setup_code_hash", "setup_code_expires_at", "setup_attempts", "failed_logins", "locked_until", "session_version", "created_at", "last_login_at"],
-  user_books: ["user_id", "book_id", "source", "code_id", "granted_at"],
-  progress: ["user_id", "book_id", "page", "updated_at"],
-  passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
-  bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
-  downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
-} as const;
-/** Columns appended at the END of an existing tab later, in this order. A tab only has them once `npm run setup-sheet` has run. */
-export const EXTRA_COLS = {
-  users: ["can_download"],
-  books: ["page_labels", "original_pdf_size", "original_pdf_pages"],
-  downloads: ["method"],
-} as const;
-export type TabName = keyof typeof TABS;
+// The tabs, their columns and the columns added later (EXTRA_COLS: a tab only has them once the sheet has been
+// updated) live in ONE place, shared with `npm run setup-sheet` and the admin's "Actualizar base de datos".
+export { EXTRA_COLS, TABS, type TabName } from "../sheet-schema";

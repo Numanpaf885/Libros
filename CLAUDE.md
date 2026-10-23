@@ -12,6 +12,7 @@ Next.js App Router, React 19, TypeScript (strict, `noUnusedLocals`/`noUnusedPara
 - `lib/db/*` and `lib/storage/*` start with `import "server-only"`: never import them from a client component.
 - `pdfjs-dist` is loaded with a dynamic `import()` only in `lib/client/render-pdf.ts` (admin upload/replace).
 - Texts for users are Spanish (Spain), addressed as "tú".
+- New tabs or columns: add them ONLY to the shared schema in `lib/sheet-schema.ts` (a new tab in `TABS`, a new column at the END of its tab's `EXTRA_COLS`, never in the middle or renamed). `npm run setup-sheet` and /admin → Mantenimiento → «Actualizar base de datos» both apply it; the code must keep working (feature hidden) until the column or tab exists.
 - Never print or commit values from `.env.local`. Do not delete `.env.local`, `.data/` or `screenshots/`.
 - One button system (`.btn*` in `app/globals.css`), one modal/sheet (`components/ui`), one icon set (`components/ui/Icon`).
 

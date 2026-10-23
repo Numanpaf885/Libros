@@ -93,6 +93,16 @@ const g = globalThis as unknown as { __usersStore?: Store };
 const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false, dlLocal: new Map(), dlMissingUntil: 0, dlWarned: false });
 const pkey = (userId: string, bookId: string) => `${userId}:${bookId}`;
 
+/**
+ * After "Actualizar base de datos": read the tabs again on the next request, and look for the optional tabs at once
+ * instead of waiting out their retry delay. Like the snapshot expiring: writes still waiting are re-applied on the read.
+ */
+export function forgetSnapshot() {
+  store.snap = null;
+  store.bmMissingUntil = 0;
+  store.dlMissingUntil = 0;
+}
+
 async function snapshot(): Promise<Snap> {
   if (store.snap && Date.now() - store.snap.at < USERS_CACHE_MS) return store.snap;
   store.loading ??= (async () => {

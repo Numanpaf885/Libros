@@ -22,6 +22,7 @@ import PageNumbering from "./PageNumbering";
 import CodesPanel from "./CodesPanel";
 import DownloadsPanel, { DownloadHistory } from "./DownloadsPanel";
 import ImagePicker, { useImagePlan } from "./ImagePicker";
+import MaintenancePanel from "./MaintenancePanel";
 import SourceSwitch, { type SourceKind } from "./SourceSwitch";
 import UsersPanel from "./UsersPanel";
 
@@ -375,9 +376,10 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const phone = useIsPhone();
   const [books, setBooks] = useState<AdminBook[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [tab, setTab] = useState<"books" | "users" | "downloads">("books");
+  const [tab, setTab] = useState<"books" | "users" | "downloads" | "maintenance">("books");
   const [extras, setExtras] = useState(false); // the sheet has books.page_labels / original_pdf_* (original PDF + page numbering)
   const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
+  const [schema, setSchema] = useState(0); // bumped when "Actualizar base de datos" changed the sheet: features are looked up again
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
@@ -396,7 +398,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
     let dead = false;
     api<{ available: boolean }>("/api/admin/downloads?size=1").then((r) => { if (!dead) setDl(r.available); }).catch(() => {});
     return () => { dead = true; };
-  }, []);
+  }, [schema]);
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -417,14 +419,18 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       </header>
 
-      <div role="tablist" aria-label="Secciones" className="flex gap-2">
-        {([["books", "Libros"], ["users", "Usuarios"], ...(dl ? [["downloads", "Descargas"] as const] : [])] as const).map(([id, label]) => (
+      <div role="tablist" aria-label="Secciones" className="flex flex-wrap gap-2">
+        {([["books", "Libros"], ["users", "Usuarios"], ...(dl ? [["downloads", "Descargas"] as const] : []), ["maintenance", "Mantenimiento"]] as const).map(([id, label]) => (
           <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}
             className={`btn min-h-11 ${tab === id ? "btn-primary" : ""}`}>{label}</button>
         ))}
       </div>
 
-      {tab === "downloads" && dl ? (
+      {tab === "maintenance" ? (
+        <div role="tabpanel" id="panel-maintenance" aria-labelledby="tab-maintenance">
+          <MaintenancePanel onChanged={() => { setSchema((v) => v + 1); load(); }} />
+        </div>
+      ) : tab === "downloads" && dl ? (
         <div role="tabpanel" id="panel-downloads" aria-labelledby="tab-downloads">
           <DownloadsPanel />
         </div>

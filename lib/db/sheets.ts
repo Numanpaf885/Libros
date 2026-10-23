@@ -1,6 +1,7 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
 import { requireEnv } from "../config";
+import { googleSheetAdmin, type SheetAdmin } from "../sheet-schema";
 import { EXTRA_COLS, TABS, type Table, type TabName } from "./table";
 
 let client: sheets_v4.Sheets | null = null;
@@ -49,6 +50,12 @@ async function hasHeader(tab: string, index: number, name: string): Promise<bool
   headers.set(key, { at: Date.now(), ok });
   return ok;
 }
+/** After "Actualizar base de datos" changed row 1: look the headers up again instead of trusting the cache. */
+export function forgetHeaders() {
+  headers.clear();
+}
+/** Tabs and row 1 of the real sheet, for the admin's Mantenimiento section (with the same quota-aware retry). */
+export const sheetsAdmin = (): SheetAdmin => googleSheetAdmin(api(), sheetId(), call);
 /** Number of columns to read and write for a tab: the base columns plus the leading run of extra columns whose header exists. */
 async function widthOf(tab: string): Promise<number> {
   let w = TABS[tab as TabName].length;

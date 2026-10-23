@@ -26,6 +26,10 @@ async function cached(tab: string): Promise<string[][]> {
   return rows;
 }
 const bust = (tab: string) => cache.__readCache!.delete(tab);
+/** Drop every cached tab (after "Actualizar base de datos" added columns: rows are read again at their new width). */
+export function forgetReadCache() {
+  cache.__readCache!.clear();
+}
 
 const toBook = (r: string[]): Book => ({
   id: r[0], slug: r[1], title: r[2], description: r[3],
