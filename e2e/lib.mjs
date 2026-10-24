@@ -61,14 +61,16 @@ export async function setup() {
   return { api, b1, b2, code: typeof c0 === "string" ? c0 : c0?.code ?? c0?.plain, activateStatus: act.status };
 }
 
-export async function context(browser, { w, h, dark = false, reduced = false, touch = true, signedIn = false, noClip = true, saved = true, books = [], userAgent }) {
+// notice: show the cookie notice (by default it is dismissed, as for anyone who has already seen it).
+export async function context(browser, { w, h, dark = false, reduced = false, touch = true, signedIn = false, noClip = true, saved = true, books = [], userAgent, notice = false }) {
   const c = await browser.newContext({
     viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light", reducedMotion: reduced ? "reduce" : "no-preference",
     deviceScaleFactor: touch ? 2 : 1, hasTouch: touch, isMobile: touch && w < 800, ...(userAgent ? { userAgent } : {}),
   });
-  await c.addInitScript(({ noClip, saved, books, dark }) => {
+  await c.addInitScript(({ noClip, saved, books, dark, notice }) => {
     try {
       localStorage.setItem("theme", dark ? "dark" : "light");
+      if (!notice) localStorage.setItem("br:cookies", "1");
       if (saved) for (const s of books) localStorage.setItem(`br:last:${s}`, "3");
       localStorage.setItem("br:mode", "book"); localStorage.setItem("br:effect", "none");
     } catch { /* ignore */ }
@@ -76,7 +78,7 @@ export async function context(browser, { w, h, dark = false, reduced = false, to
       const add = () => { const st = document.createElement("style"); st.textContent = "html, body, body > * { overflow-x: visible !important; }"; (document.head || document.documentElement).appendChild(st); };
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", add); else add();
     }
-  }, { noClip, saved, books, dark });
+  }, { noClip, saved, books, dark, notice });
   if (signedIn) {
     const r = await c.request.post(BASE + "/api/me/login", { data: { username: "e2e", password: PW }, headers: { Origin: BASE } });
     if (r.status() !== 200) throw new Error("e2e sign-in failed " + r.status());

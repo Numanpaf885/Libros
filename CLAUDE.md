@@ -15,6 +15,8 @@ Next.js App Router, React 19, TypeScript (strict, `noUnusedLocals`/`noUnusedPara
 - New tabs or columns: add them ONLY to the shared schema in `lib/sheet-schema.ts` (a new tab in `TABS`, a new column at the END of its tab's `EXTRA_COLS`, never in the middle or renamed). `npm run setup-sheet` and /admin → Mantenimiento → «Actualizar base de datos» both apply it; the code must keep working (feature hidden) until the column or tab exists.
 - Never print or commit values from `.env.local`. Do not delete `.env.local`, `.data/` or `screenshots/`.
 - One button system (`.btn*` in `app/globals.css`), one modal/sheet (`components/ui`), one icon set (`components/ui/Icon`).
+- Every new cookie, localStorage/sessionStorage key or IndexedDB database must be added to `lib/cookie-inventory.ts` (the table on /cookies; `e2e/legal.mjs` fails on anything not listed). Only "Técnica necesaria" or "Preferencia" items are allowed as they are. Before any non-essential cookie or storage (analytics, advertising, third-party embeds) is added, a real consent banner with "Rechazar" (as easy as "Aceptar") must come first and nothing may be set before consent.
+- `/privacidad` describes what the code does: if you start storing a new personal datum, sending data to a new provider or keeping it longer, update that page in the same change.
 
 ## Commands
 - `npm run dev` / `npm run build` / `npm run lint`

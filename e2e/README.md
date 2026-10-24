@@ -27,4 +27,13 @@ node e2e/perf-turn.mjs                  # fps al pasar página (doble página y 
 npm run build && node e2e/bundle-size.mjs   # tamaño del JS del lector; comprueba que no lleva pdf.js ni tesseract.js
 ```
 
+Contacto, «Mensajes», «Ajustes legales», páginas legales, aviso de cookies, `/activar`, «Exportar datos» y «Anonimizar». `legal.mjs` también graba todas las cookies y claves de almacenamiento de una visita real (leer, entrar, desbloquear, descargar, cambiar el tema) y comprueba que coinciden exactamente con la tabla de `/cookies` (`lib/cookie-inventory.ts`):
+
+```bash
+DATA_BACKEND=mock npx next dev -p 3100
+node e2e/legal.mjs                      # SCREENSHOTS=1 guarda capturas en screenshots/
+MOCK_MISSING_TABS=messages,settings DATA_BACKEND=mock npx next dev -p 3100   # reinicia para repetir
+node e2e/legal-missing.mjs              # sin las pestañas nuevas: todo funciona y las secciones lo dicen
+```
+
 `BASE` (por defecto `http://localhost:3100`) y `CHROME_PATH` se pueden cambiar con variables de entorno.

@@ -22,7 +22,9 @@ import PageNumbering from "./PageNumbering";
 import CodesPanel from "./CodesPanel";
 import DownloadsPanel, { DownloadHistory } from "./DownloadsPanel";
 import ImagePicker, { useImagePlan } from "./ImagePicker";
+import LegalSettingsPanel from "./LegalSettingsPanel";
 import MaintenancePanel from "./MaintenancePanel";
+import MessagesPanel from "./MessagesPanel";
 import SourceSwitch, { type SourceKind } from "./SourceSwitch";
 import TextPanel from "./TextPanel";
 import UsersPanel from "./UsersPanel";
@@ -380,11 +382,13 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const phone = useIsPhone();
   const [books, setBooks] = useState<AdminBook[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [tab, setTab] = useState<"books" | "users" | "downloads" | "maintenance">("books");
+  const [tab, setTab] = useState<"books" | "users" | "downloads" | "messages" | "legal" | "maintenance">("books");
   const [extras, setExtras] = useState(false); // the sheet has books.page_labels / original_pdf_* (original PDF + page numbering)
   const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
   const [schema, setSchema] = useState(0); // bumped when "Actualizar base de datos" changed the sheet: features are looked up again
   const [text, setText] = useState(false); // the sheet has books.text_status / text_pages / allow_copy (selectable text)
+  const [unread, setUnread] = useState(0); // contact messages still "nuevo" (badge on "Mensajes")
+  const [legalDone, setLegalDone] = useState(true); // the owner and contact email for the legal pages are filled in
   const load = () => setVersion((v) => v + 1);
 
   useEffect(() => {
@@ -403,8 +407,12 @@ export default function AdminApp({ siteName }: { siteName: string }) {
     let dead = false;
     api<{ available: boolean }>("/api/admin/downloads?size=1").then((r) => { if (!dead) setDl(r.available); }).catch(() => {});
     api<{ ready: boolean }>("/api/admin/text").then((r) => { if (!dead) setText(r.ready); }).catch(() => {});
+    api<{ unread: number }>("/api/admin/messages?size=1").then((r) => { if (!dead) setUnread(r.unread); }).catch(() => {});
+    api<{ available: boolean; complete?: boolean }>("/api/admin/settings").then((r) => { if (!dead) setLegalDone(!!r.complete); }).catch(() => {});
     return () => { dead = true; };
   }, [schema]);
+  // Download history and contact messages are kept 12 months (as /privacidad says): older rows go, at most once a day.
+  useEffect(() => { api("/api/admin/retention", "POST").catch(() => {}); }, []);
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -425,10 +433,22 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       </header>
 
+      {!legalDone && tab !== "legal" && (
+        <div role="status" className="panel flex flex-wrap items-center justify-between gap-3 border-accent p-4" data-testid="legal-banner">
+          <p className="min-w-0 flex-1 basis-64 text-[15px]"><strong className="font-semibold">Completa los datos legales.</strong> Las páginas de Privacidad, Cookies y Aviso legal necesitan tu nombre y un email de contacto.</p>
+          <button type="button" className="btn btn-sm" onClick={() => setTab("legal")}>Ir a Ajustes legales</button>
+        </div>
+      )}
+
       <div role="tablist" aria-label="Secciones" className="flex flex-wrap gap-2">
-        {([["books", "Libros"], ["users", "Usuarios"], ...(dl ? [["downloads", "Descargas"] as const] : []), ["maintenance", "Mantenimiento"]] as const).map(([id, label]) => (
+        {([["books", "Libros"], ["users", "Usuarios"], ...(dl ? [["downloads", "Descargas"] as const] : []), ["messages", "Mensajes"], ["legal", "Ajustes legales"], ["maintenance", "Mantenimiento"]] as const).map(([id, label]) => (
           <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}
-            className={`btn min-h-11 ${tab === id ? "btn-primary" : ""}`}>{label}</button>
+            className={`btn min-h-11 ${tab === id ? "btn-primary" : ""}`}>
+            {label}
+            {id === "messages" && unread > 0 && (
+              <span className="tnum ml-0.5 inline-flex min-w-6 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-semibold leading-6 text-bg" data-testid="unread-badge" aria-label={`${unread} sin leer`}>{unread > 99 ? "99+" : unread}</span>
+            )}
+          </button>
         ))}
       </div>
 
@@ -439,6 +459,14 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       ) : tab === "downloads" && dl ? (
         <div role="tabpanel" id="panel-downloads" aria-labelledby="tab-downloads">
           <DownloadsPanel />
+        </div>
+      ) : tab === "messages" ? (
+        <div role="tabpanel" id="panel-messages" aria-labelledby="tab-messages">
+          <MessagesPanel key={schema} onUnread={setUnread} />
+        </div>
+      ) : tab === "legal" ? (
+        <div role="tabpanel" id="panel-legal" aria-labelledby="tab-legal">
+          <LegalSettingsPanel key={schema} onSaved={setLegalDone} />
         </div>
       ) : tab === "users" ? (
         <div role="tabpanel" id="panel-users" aria-labelledby="tab-users">

@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { isMock, PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
-import { ALL_BOOKS, type BookmarkRecord, type DownloadRecord, type DownloadStatus, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
+import { ALL_BOOKS, type BookmarkRecord, type DownloadRecord, type DownloadStatus, type MessageRecord, type MessageStatus, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import { TABS as SHEET_TABS, type Table } from "./table";
@@ -49,6 +49,12 @@ const fromDownload = (d: DownloadRecord): string[] => [
   d.id, d.actor, d.user_id, d.username, d.display_name, d.book_id, d.book_title, String(d.from_page), String(d.to_page), String(d.page_count),
   d.device, d.status, d.created_at, d.finished_at, d.method,
 ];
+const STATUSES: readonly MessageStatus[] = ["nuevo", "leído", "respondido", "archivado"];
+const toMessage = (r: string[]): MessageRecord => ({
+  id: r[0], created_at: r[1] ?? "", name: r[2] ?? "", email: r[3] ?? "", subject: r[4] ?? "", message: r[5] ?? "", user_id: r[6] ?? "", username: r[7] ?? "",
+  status: (STATUSES as readonly string[]).includes(r[8]) ? (r[8] as MessageStatus) : "nuevo", admin_note: r[9] ?? "", replied_at: r[10] ?? "", ip_hash: r[11] ?? "",
+});
+const fromMessage = (m: MessageRecord): string[] => [m.id, m.created_at, m.name, m.email, m.subject, m.message, m.user_id, m.username, m.status, m.admin_note, m.replied_at, m.ip_hash];
 const toPasskey = (r: string[]): PasskeyRecord => ({
   id: r[0], user_id: r[1], credential_id: r[2], public_key: r[3], counter: num(r[4]), transports: r[5], label: r[6], created_at: r[7], last_used_at: r[8],
 });
@@ -67,6 +73,12 @@ interface Snap {
   downloads: DownloadRecord[];
   /** false while the downloads tab does not exist: the download features and the log stay hidden */
   downloadsOk: boolean;
+  /** the contact form's messages; false while the `messages` tab does not exist (the form and "Mensajes" wait for it) */
+  messages: MessageRecord[];
+  messagesOk: boolean;
+  /** key -> value from the `settings` tab ("Ajustes legales"); false while the tab does not exist */
+  settings: Map<string, string>;
+  settingsOk: boolean;
 }
 interface BmQueue { remove: Set<string>; add: Map<string, BookmarkRecord>; /** when the oldest waiting change was made */ since: number }
 interface Store {
@@ -88,9 +100,17 @@ interface Store {
   dlLocal: Map<string, DownloadRecord>;
   dlMissingUntil: number;
   dlWarned: boolean;
+  /** the same for the tabs added later still (messages, settings): don't ask again before this time */
+  missingUntil: Record<string, number>;
+  warned: Set<string>;
 }
 const g = globalThis as unknown as { __usersStore?: Store };
-const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false, dlLocal: new Map(), dlMissingUntil: 0, dlWarned: false });
+const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false, dlLocal: new Map(), dlMissingUntil: 0, dlWarned: false, missingUntil: {} as Record<string, number>, warned: new Set<string>() } as Store);
+store.missingUntil ??= {}; // a store made by an older version of this module (dev reloads)
+store.warned ??= new Set();
+/** Tabs added after bookmarks and downloads, optional in the same way. */
+const LATER_TABS = ["messages", "settings"] as const;
+const LATER_RETRY_MS = 5 * 60_000;
 const pkey = (userId: string, bookId: string) => `${userId}:${bookId}`;
 
 /**
@@ -101,6 +121,7 @@ export function forgetSnapshot() {
   store.snap = null;
   store.bmMissingUntil = 0;
   store.dlMissingUntil = 0;
+  store.missingUntil = {};
 }
 
 async function snapshot(): Promise<Snap> {
@@ -112,10 +133,12 @@ async function snapshot(): Promise<Snap> {
       // break because of a new tab.
       const wantBm = Date.now() >= store.bmMissingUntil;
       const wantDl = Date.now() >= store.dlMissingUntil;
-      const optional = [...(wantBm ? ["bookmarks"] : []), ...(wantDl ? ["downloads"] : [])];
+      const later = LATER_TABS.filter((t) => Date.now() >= (store.missingUntil[t] ?? 0));
+      const optional = [...(wantBm ? ["bookmarks"] : []), ...(wantDl ? ["downloads"] : []), ...later];
       let d: Record<string, string[][]>;
       let bookmarksOk = wantBm;
       let downloadsOk = wantDl;
+      const laterOk = new Set<string>(later);
       try {
         d = await table().listMany([...TABS, ...optional]);
       } catch (e) {
@@ -123,17 +146,21 @@ async function snapshot(): Promise<Snap> {
         d = await table().listMany([...TABS]);
         bookmarksOk = false;
         downloadsOk = false;
+        laterOk.clear();
         for (const tab of optional) {
           try {
             d[tab] = (await table().listMany([tab]))[tab];
-            if (tab === "bookmarks") bookmarksOk = true; else downloadsOk = true;
+            if (tab === "bookmarks") bookmarksOk = true; else if (tab === "downloads") downloadsOk = true; else laterOk.add(tab);
           } catch {
             if (tab === "bookmarks") {
               store.bmMissingUntil = Date.now() + BM_RETRY_MS;
               if (!store.bmWarned) { store.bmWarned = true; console.warn("[bookmarks] the `bookmarks` tab is missing: run `npm run setup-sheet`. Bookmarks stay on the reader's device until then."); }
-            } else {
+            } else if (tab === "downloads") {
               store.dlMissingUntil = Date.now() + DL_RETRY_MS;
               if (!store.dlWarned) { store.dlWarned = true; console.warn("[downloads] the `downloads` tab is missing: run `npm run setup-sheet`. The download features stay hidden until then."); }
+            } else {
+              store.missingUntil[tab] = Date.now() + LATER_RETRY_MS;
+              if (!store.warned.has(tab)) { store.warned.add(tab); console.warn(`[${tab}] the \`${tab}\` tab is missing: /admin → Mantenimiento → «Actualizar base de datos». That feature stays hidden until then.`); }
             }
           }
         }
@@ -148,6 +175,10 @@ async function snapshot(): Promise<Snap> {
         bookmarksOk,
         downloads: downloadsOk ? (d.downloads ?? []).filter((r) => r[0]).map(toDownload) : [],
         downloadsOk,
+        messages: laterOk.has("messages") ? (d.messages ?? []).filter((r) => r[0]).map(toMessage) : [],
+        messagesOk: laterOk.has("messages"),
+        settings: new Map(laterOk.has("settings") ? (d.settings ?? []).filter((r) => r[0]).map((r) => [r[0], r[1] ?? ""] as [string, string]) : []),
+        settingsOk: laterOk.has("settings"),
       };
       // Rows written by this instance that the sheet read does not show yet (or finished rows it still shows as started).
       for (const rec of store.dlLocal.values()) upsertLocalDownload(snap, rec);
@@ -556,4 +587,110 @@ export async function finishDownload(id: string, status: Exclude<DownloadStatus,
 /** Downloads this user started since `sinceMs` (any outcome counts). */
 export async function downloadsSince(userId: string, sinceMs: number): Promise<number> {
   return (await snapshot()).downloads.filter((d) => d.actor === "user" && d.user_id === userId && Date.parse(d.created_at) >= sinceMs).length;
+}
+
+// ---- contact messages ("Mensajes") ----
+/** The `messages` tab exists (without it the form says it is not available yet and the admin asks for an update). */
+export async function messagesAvailable(): Promise<boolean> {
+  return (await snapshot()).messagesOk;
+}
+/** Every message, oldest first (callers sort and filter). */
+export async function listMessages(): Promise<MessageRecord[]> {
+  return (await snapshot()).messages.map((m) => ({ ...m }));
+}
+/** Saves a new message: one write (RAW, so text such as "=IMPORTXML(...)" is stored as typed, never as a formula). */
+export async function addMessage(m: MessageRecord): Promise<void> {
+  await table().append("messages", fromMessage(m));
+  (await snapshot()).messages.push(m);
+}
+/** Read the FRESH row, change it with `fn` and write it back (one read, one write). null when it does not exist. */
+export async function modifyMessage(id: string, fn: (m: MessageRecord) => MessageRecord): Promise<MessageRecord | null> {
+  let result: MessageRecord | null = null;
+  const row = await table().modifyWhere("messages", [[0, id]], (r) => {
+    result = fn(toMessage(r));
+    return fromMessage(result);
+  });
+  if (!row || !result) return null;
+  const s = await snapshot();
+  const i = s.messages.findIndex((x) => x.id === id);
+  if (i >= 0) s.messages[i] = result; else s.messages.push(result);
+  return { ...(result as MessageRecord) };
+}
+export async function deleteMessage(id: string): Promise<boolean> {
+  const n = await table().deleteMatching("messages", [[0, id]]);
+  const s = await snapshot();
+  s.messages = s.messages.filter((m) => m.id !== id);
+  return n > 0;
+}
+
+// ---- settings ("Ajustes legales") ----
+export async function settingsAvailable(): Promise<boolean> {
+  return (await snapshot()).settingsOk;
+}
+/** Every setting (an empty object when the tab does not exist yet). */
+export async function getSettings(): Promise<Record<string, string>> {
+  return Object.fromEntries((await snapshot()).settings);
+}
+/** Inserts or replaces these keys: one read and at most two writes. */
+export async function saveSettings(values: Record<string, string>): Promise<void> {
+  const rows = Object.entries(values).map(([k, v]) => [k, v]);
+  await table().upsertMany("settings", [0], rows);
+  const s = await snapshot();
+  for (const [k, v] of rows) s.settings.set(k, v);
+}
+
+// ---- data rights (admin → Usuarios) ----
+/** Every bookmark of one account (all books). */
+export async function bookmarksOfUser(userId: string): Promise<BookmarkRecord[]> {
+  return (await snapshot()).bookmarks.filter((b) => b.user_id === userId).map((b) => ({ ...b }));
+}
+export const DELETED_NAME = "Usuario eliminado";
+/**
+ * Replaces the name, username and email of an account in its download history and its messages with "Usuario
+ * eliminado" (the rows themselves stay, for the statistics). One read and one write per tab, only if something changes.
+ */
+export async function anonymizeUserHistory(userId: string): Promise<{ downloads: number; messages: number }> {
+  const s = await snapshot();
+  let downloads = 0, messages = 0;
+  if (s.downloadsOk) {
+    const rows = (await table().list("downloads")).filter((r) => r[0] && r[2] === userId).map(toDownload)
+      .filter((d) => d.username !== DELETED_NAME || d.display_name !== DELETED_NAME)
+      .map((d) => ({ ...d, username: DELETED_NAME, display_name: DELETED_NAME }));
+    if (rows.length) await table().upsertMany("downloads", [0], rows.map(fromDownload));
+    downloads = rows.length;
+    for (const d of rows) { upsertLocalDownload(s, d); if (store.dlLocal.has(d.id)) store.dlLocal.set(d.id, d); }
+  }
+  if (s.messagesOk) {
+    const rows = (await table().list("messages")).filter((r) => r[0] && r[6] === userId).map(toMessage)
+      .filter((m) => m.name !== DELETED_NAME || m.username !== DELETED_NAME || m.email !== DELETED_NAME)
+      .map((m) => ({ ...m, name: DELETED_NAME, username: DELETED_NAME, email: DELETED_NAME }));
+    if (rows.length) await table().upsertMany("messages", [0], rows.map(fromMessage));
+    messages = rows.length;
+    for (const m of rows) { const i = s.messages.findIndex((x) => x.id === m.id); if (i >= 0) s.messages[i] = m; }
+  }
+  return { downloads, messages };
+}
+
+/**
+ * Deletes download-history rows and messages older than `maxAgeMs` (the 12 months promised in /privacidad).
+ * Reads come from the snapshot; a tab is written (one request) only when it has something to delete.
+ */
+export async function purgeOlderThan(maxAgeMs: number): Promise<{ downloads: number; messages: number }> {
+  const s = await snapshot();
+  const cutoff = Date.now() - maxAgeMs;
+  const old = (iso: string) => { const t = Date.parse(iso); return Number.isFinite(t) && t < cutoff; };
+  const dl = s.downloadsOk ? s.downloads.filter((d) => old(d.created_at)).map((d) => d.id) : [];
+  const ms = s.messagesOk ? s.messages.filter((m) => old(m.created_at)).map((m) => m.id) : [];
+  if (dl.length) {
+    await table().applyRows("downloads", dl, []);
+    const gone = new Set(dl);
+    s.downloads = s.downloads.filter((d) => !gone.has(d.id));
+    for (const id of dl) store.dlLocal.delete(id);
+  }
+  if (ms.length) {
+    await table().applyRows("messages", ms, []);
+    const gone = new Set(ms);
+    s.messages = s.messages.filter((m) => !gone.has(m.id));
+  }
+  return { downloads: dl.length, messages: ms.length };
 }

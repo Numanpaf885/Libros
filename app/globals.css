@@ -179,6 +179,15 @@ input, textarea { caret-color: var(--accent); }
   .label { @apply mb-1.5 block text-sm font-medium text-fg; }
   .hint { @apply text-sm text-muted; }
   .err { @apply text-sm text-danger; }
+  /* Long texts (Privacidad, Cookies, Aviso legal) */
+  .legal { @apply text-[17px] leading-7 [overflow-wrap:anywhere]; }
+  .legal h2 { @apply mt-10 mb-3 text-2xl; }
+  .legal h3 { @apply mt-6 mb-2 font-sans text-base font-semibold; }
+  .legal p, .legal ul:not([role]), .legal dl { @apply mt-3; }
+  .legal ul:not([role]) { @apply list-disc space-y-1.5 pl-6; }
+  .legal li::marker { color: var(--muted); }
+  .legal strong { @apply font-semibold; }
+  .legal a:not(.btn) { @apply text-accent underline underline-offset-4; }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -190,6 +199,8 @@ input, textarea { caret-color: var(--accent); }
 /* Reader deterrents: nothing prints, nothing selects, nothing drags. */
 .reader-root, .reader-root * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .reader-root canvas { -webkit-user-drag: none; }
+/* The cookie notice never covers the reader's controls (the reader sets data-reading on <html> while open). */
+html[data-reading] .cookie-notice { display: none; }
 @media print { html, body { display: none !important; } }
 /* Selectable text over the page images: invisible, only its selection shows. The only part of the reader that selects. */
 .text-layer { position: absolute; left: 0; top: 0; z-index: 1; transform-origin: 0 0; line-height: 1; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; }

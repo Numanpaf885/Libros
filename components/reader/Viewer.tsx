@@ -101,6 +101,11 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const loadFrac = useRef(0);
   const cb = useRef({ onExpired });
   useEffect(() => { cb.current = { onExpired }; });
+  // While the reader is open: the cookie notice (and anything else that floats) stays out of the way.
+  useEffect(() => {
+    document.documentElement.dataset.reading = "";
+    return () => { delete document.documentElement.dataset.reading; };
+  }, []);
 
   const setMode = (m: ReadMode) => {
     setModeState(m);

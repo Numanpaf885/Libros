@@ -2,6 +2,27 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { SITE_CONTACT, SITE_LINKS, SITE_NAME, SITE_INTRO } from "@/lib/site";
 
+const LEGAL = [
+  { href: "/privacidad", label: "Privacidad" },
+  { href: "/cookies", label: "Cookies" },
+  { href: "/aviso-legal", label: "Aviso legal" },
+  { href: "/contacto", label: "Contacto" },
+];
+
+/** Privacidad · Cookies · Aviso legal · Contacto: at the bottom of every page (the admin shows only this line). */
+export function LegalLinks({ className = "" }: { className?: string }) {
+  return (
+    <nav aria-label="Legal" className={`flex flex-wrap items-center ${className}`}>
+      {LEGAL.map((l, i) => (
+        <span key={l.href} className="inline-flex items-center">
+          {i > 0 && <span aria-hidden="true" className="px-1">·</span>}
+          <Link href={l.href} className="inline-flex min-h-11 items-center px-1 transition-colors hover:text-fg"><span className="ulink">{l.label}</span></Link>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 export default function SiteFooter() {
   return (
     <footer id="contacto" className="mt-auto border-t border-line bg-surface" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -12,19 +33,20 @@ export default function SiteFooter() {
         </div>
         <div>
           <h2 className="font-sans text-base font-semibold">Contacto</h2>
-          {SITE_LINKS.length > 0 ? (
-            <ul className="mt-2 space-y-1.5">
-              {SITE_LINKS.map((l) => (
-                <li key={l.label}><a href={l.href} className="link text-[15px]" target={l.href.startsWith("mailto:") ? undefined : "_blank"} rel="noreferrer">{l.label}</a></li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-[15px] text-muted">{SITE_CONTACT}</p>
-          )}
+          <ul className="mt-2 space-y-1.5">
+            <li><Link href="/contacto" className="link text-[15px]">Escríbenos</Link></li>
+            {SITE_LINKS.map((l) => (
+              <li key={l.label}><a href={l.href} className="link text-[15px]" target={l.href.startsWith("mailto:") ? undefined : "_blank"} rel="noreferrer">{l.label}</a></li>
+            ))}
+          </ul>
+          {SITE_LINKS.length === 0 && <p className="mt-2 text-[15px] text-muted">{SITE_CONTACT}</p>}
         </div>
       </div>
       <div className="border-t border-line">
-        <p className="mx-auto w-full max-w-[1200px] px-4 py-4 text-sm text-muted sm:px-6">© {new Date().getFullYear()} {SITE_NAME}</p>
+        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-x-6 gap-y-1 px-4 py-3 text-sm text-muted sm:px-6">
+          <p>© {new Date().getFullYear()} {SITE_NAME}</p>
+          <LegalLinks />
+        </div>
       </div>
     </footer>
   );
