@@ -21,7 +21,7 @@ t.check(`no div/span/li/... with onClick in app/ and components/ (${bad.length})
 
 // ---- 2. computed cursor in the browser ------------------------------------------------------------------------------
 const { b1, b2, code } = await setup();
-await warm(["/", `/b/${b1.slug}`, "/entrar", "/activar", "/cuenta", "/admin", "/admin/login"]);
+await warm(["/", `/b/${b1.slug}`, "/entrar", "/activar", "/cuenta", "/admin", "/admin/login", "/contacto", "/privacidad", "/cookies", "/aviso-legal"]);
 const b = await launch();
 let checked = 0; const failures = [];
 const SEL = [
@@ -68,10 +68,13 @@ for (const [w, touch] of [[1440, false], [390, true]]) {
       await p.locator("button[aria-label='Efecto de página']").first().click().catch(() => {}); await sleep(300); await sc(p, `${tag} reader (effect menu)`);
       await p.locator("[role=radio]:has-text('PDF')").click().catch(() => {}); await sleep(1500); await sc(p, `${tag} reader (pdf)`);
     }
-    for (const u of ["/entrar", "/activar"]) { await p.goto(BASE + u); await sleep(900); await sc(p, `${tag} ${u}`); }
+    for (const u of ["/entrar", "/activar", "/contacto", "/privacidad", "/cookies", "/aviso-legal"]) { await p.goto(BASE + u); await sleep(900); await sc(p, `${tag} ${u}`); }
     if (signed) { await p.goto(BASE + "/cuenta"); await sleep(1200); await sc(p, `${tag} /cuenta`); }
     await c.close();
   }
+  // the cookie notice (first visit)
+  const n = await context(b, { w, h: 900, touch, notice: true }); const np = await n.newPage();
+  await np.goto(BASE + "/"); await np.waitForSelector("[data-testid=cookie-notice]"); await sc(np, `${w}px cookie notice`); await n.close();
 }
 {
   const c = await adminContext(b, { w: 1440, h: 900, touch: false }); const p = await c.newPage();
@@ -81,6 +84,10 @@ for (const [w, touch] of [[1440, false], [390, true]]) {
   if (rows.length) { await rows[0].click().catch(() => {}); await sleep(700); await sc(p, "/admin (Libros, a book open)"); }
   await p.locator("[role=tab]:has-text('Usuarios')").click(); await sleep(900); await sc(p, "/admin (Usuarios)");
   const more = await p.locator("main li button, main summary").all(); if (more.length) { await more[0].click().catch(() => {}); await sleep(600); await sc(p, "/admin (Usuarios, one open)"); }
+  await p.locator("[role=tab]:has-text('Mensajes')").click(); await sleep(900); await sc(p, "/admin (Mensajes)");
+  const msg = p.locator("[data-testid=messages-list] li > button").first();
+  if (await msg.count()) { await msg.click(); await sleep(700); await sc(p, "/admin (Mensajes, one open)"); }
+  await p.locator("[role=tab]:has-text('Ajustes legales')").click(); await sleep(900); await sc(p, "/admin (Ajustes legales)");
   await c.close();
 }
 await b.close();

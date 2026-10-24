@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/brand/Logo";
+import { LegalLinks } from "@/components/layout/SiteFooter";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function AdminLogin() {
@@ -49,6 +50,7 @@ export default function AdminLogin() {
         {error && <p role="alert" className="err">{error}</p>}
         <button disabled={busy} className="btn btn-primary">{busy ? "Entrando…" : "Entrar"}</button>
       </form>
+      <LegalLinks className="mt-6 justify-center text-sm text-muted" />
     </main>
   );
 }

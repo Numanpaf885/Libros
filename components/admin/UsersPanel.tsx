@@ -85,6 +85,7 @@ function UserRow({ u, books, reload, issue, dl }: { u: UserView; books: AdminBoo
   const [askReset, setAskReset] = useState(false);
   const [askDelete, setAskDelete] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [anon, setAnon] = useState(false);
   const title = (id: string) => books.find((b) => b.id === id)?.title ?? "Libro eliminado";
   const [chipClass, chipText] = STATUS[u.status];
   const run = async (fn: () => Promise<void>) => {
@@ -141,7 +142,8 @@ function UserRow({ u, books, reload, issue, dl }: { u: UserView; books: AdminBoo
             {u.status === "active" ? "Desactivar" : "Activar"}
           </button>
         )}
-        <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
+        <a className="btn btn-sm" href={`/api/admin/users/${u.id}/export`} download data-testid="export-user"><Icon name="download" size={16} />Exportar datos</a>
+        <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAnon(false); setAskDelete(true); }}>Eliminar</button>
       </div>
 
       {panel === "history" && <div className="mt-4 border-t border-line pt-4"><DownloadHistory filter={{ user: u.id }} /></div>}
@@ -164,9 +166,18 @@ function UserRow({ u, books, reload, issue, dl }: { u: UserView; books: AdminBoo
         <p>Se borrarán la contraseña y los dispositivos de Face ID o huella de <strong className="text-fg">{u.display_name}</strong>, se cerrará su sesión en todos los dispositivos y recibirá un código nuevo para volver a activar su cuenta.</p>
       </ConfirmDialog>
       <ConfirmDialog open={askDelete} danger title="Eliminar usuario" confirmLabel="Eliminar para siempre" busy={busy} confirmDisabled={confirm.trim().toLowerCase() !== u.username} onCancel={() => setAskDelete(false)}
-        onConfirm={() => run(async () => { await api(`/api/admin/users/${u.id}`, "DELETE", { username: confirm }); setAskDelete(false); toast("ok", "Usuario eliminado"); reload(); })}>
+        onConfirm={() => run(async () => {
+          // first the history (by id), so a failure leaves the account in place and the admin can try again
+          if (anon) await api(`/api/admin/users/${u.id}/anonymize`, "POST", {});
+          await api(`/api/admin/users/${u.id}`, "DELETE", { username: confirm });
+          setAskDelete(false); toast("ok", anon ? "Usuario eliminado y su historial anonimizado" : "Usuario eliminado"); reload();
+        })}>
         <p>Se borrarán su cuenta, su progreso y sus dispositivos. Escribe <strong className="text-fg">{u.username}</strong> para confirmar.</p>
         <input value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field" aria-label="Escribe el nombre de usuario para confirmar" autoComplete="off" autoCapitalize="none" />
+        <label className="flex min-h-11 items-start gap-3 pt-2 text-[15px] text-fg">
+          <input type="checkbox" className="mt-1" checked={anon} onChange={(e) => setAnon(e.target.checked)} data-testid="delete-anon" />
+          <span>Anonimizar también su historial de descargas y mensajes <span className="block text-sm text-muted">Su nombre, usuario y email pasan a ser «Usuario eliminado».</span></span>
+        </label>
       </ConfirmDialog>
     </li>
   );

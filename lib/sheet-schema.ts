@@ -19,6 +19,10 @@ export const TABS = {
   passkeys: ["id", "user_id", "credential_id", "public_key", "counter", "transports", "label", "created_at", "last_used_at"],
   bookmarks: ["id", "user_id", "book_id", "page", "label", "created_at"],
   downloads: ["id", "actor", "user_id", "username", "display_name", "book_id", "book_title", "from_page", "to_page", "page_count", "device", "status", "created_at", "finished_at"],
+  // Contact form ("Mensajes" in the admin). ip_hash: HMAC of the IP with HASH_PEPPER, never the IP itself.
+  messages: ["id", "created_at", "name", "email", "subject", "message", "user_id", "username", "status", "admin_note", "replied_at", "ip_hash"],
+  // Key / value settings edited in the admin ("Ajustes legales").
+  settings: ["key", "value"],
 } as const;
 /** Columns appended at the END of an existing tab later, in this order. The app uses one only once its header exists. */
 export const EXTRA_COLS = {

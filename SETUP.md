@@ -124,6 +124,15 @@ Readers can select the text of the pages and copy it (Ctrl/Cmd+C, or the context
 
 The text is stored in R2 next to the page images (`<book>/text/0001-0020.json`, 20 pages per file) and readers get it only through the same access check as the pages, with 60-second links. In Book mode a **Seleccionar texto** button (I-beam) next to Libro/PDF makes a mouse drag select text instead of turning the page; on phones a long-press always selects.
 
+## Contacto, Mensajes and the legal pages
+
+1. Open `/admin` → **Mantenimiento** → **Actualizar base de datos** once. It creates two tabs: `messages` (the contact form) and `settings` (the legal details). Until they exist, `/contacto` says the form will be available soon, and **Mensajes** and **Ajustes legales** say "Actualiza la base de datos en Mantenimiento"; everything else works as before.
+2. `/admin` → **Ajustes legales**: fill in **Responsable** (your name, or your company and NIF), **Email de contacto** and, if you want, **Ciudad**. "Última actualización" is set to today on every save. Until the name and email are filled in, the admin shows a "Completa los datos legales" banner. `/privacidad`, `/cookies` and `/aviso-legal` never show placeholders: a missing detail is simply left out.
+3. **`/contacto`** stores messages in the `messages` tab; nothing is emailed. They appear in `/admin` → **Mensajes** (the badge counts the new ones). Opening a message marks it as read; **Responder por email** opens your own email app with "Re: {asunto}" and the message quoted. Anti-spam: a hidden field, at least 3 seconds between loading the form and sending it, 3 messages per 10 minutes per IP and 5 per day per account. The IP is never stored: only an HMAC of it with `HASH_PEPPER`.
+4. **Retention:** download history and messages older than 12 months are deleted automatically (checked when you open `/admin`, at most once a day), as the privacy policy says.
+5. **Usuarios:** **Exportar datos** downloads a JSON file with everything the site keeps about a reader (no password or code hashes), for access and portability requests. When deleting a reader, **Anonimizar también su historial de descargas y mensajes** replaces their name, username and email with "Usuario eliminado" in those rows.
+6. The legal texts describe what the code does today. Read them once; if you change what the site stores, update them (and the cookie list in `lib/cookie-inventory.ts`).
+
 ## Things worth knowing
 
 - **Codes are shown once.** They are stored hashed, so **Copiar enlace** only works right after you create or change them. To re-send one, use **Cambiar código** (keeps the label and expiry).

@@ -2,7 +2,7 @@
 import { launch, setup, context, adminContext, counter, BASE, sleep, warm } from "./lib.mjs";
 const t = counter("overflow");
 const { b1, b2, code } = await setup();
-await warm(["/", `/b/${b1.slug}`, "/entrar", "/activar", "/cuenta", "/admin", "/admin/login"]);
+await warm(["/", `/b/${b1.slug}`, "/entrar", "/activar", "/cuenta", "/admin", "/admin/login", "/contacto", "/privacidad", "/cookies", "/aviso-legal"]);
 const b = await launch();
 const WIDTHS = [320, 360, 375, 390, 414, 768];
 const rows = [];
@@ -16,7 +16,8 @@ for (const w of WIDTHS) {
   for (const signed of [false, true]) {
     const c = await context(b, { w, h: 800, signedIn: signed, books: [b1.slug, b2.slug] });
     const p = await c.newPage();
-    const pages = [["/", "/"], [`/b/${b1.slug}`, "book page"], [`/b/${b1.slug}?code=${code}#p=2`, "reader"], ["/entrar", "/entrar"], ["/activar", "/activar"]];
+    const pages = [["/", "/"], [`/b/${b1.slug}`, "book page"], [`/b/${b1.slug}?code=${code}#p=2`, "reader"], ["/entrar", "/entrar"], ["/activar", "/activar"],
+      ["/contacto", "/contacto"], ["/privacidad", "/privacidad"], ["/cookies", "/cookies"], ["/aviso-legal", "/aviso-legal"]];
     if (signed) pages.push(["/cuenta", "/cuenta"]);
     for (const [url, name] of pages) {
       await p.goto(BASE + url); await p.waitForLoadState("load"); await sleep(url.includes("code=") ? 2500 : 900);

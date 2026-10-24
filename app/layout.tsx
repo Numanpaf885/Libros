@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Literata } from "next/font/google";
 import { ViewTransition } from "react";
 import { Analytics } from "@vercel/analytics/next";
+import CookieNotice from "@/components/legal/CookieNotice";
 import { ToastProvider } from "@/components/ui/Toaster";
 import { SITE_NAME } from "@/lib/site";
 import "./globals.css";
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
         <ToastProvider>
           <ViewTransition>{children}</ViewTransition>
+          <CookieNotice />
         </ToastProvider>
         <Analytics />
       </body>

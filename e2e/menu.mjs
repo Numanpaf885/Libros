@@ -63,12 +63,15 @@ for (const w of [360, 390]) for (const signed of [false, true]) {
   if (signed) { await tap(p, burger); await sleep(700); await tap(p, p.locator("[role=dialog] button:has-text('Salir')")); await sleep(1200); t.check(`${tag}: Salir signs out and closes`, (await p.locator("[role=dialog]").count()) === 0 && (await p.locator("a:has-text('Entrar')").count()) > 0); }
   await c.close();
 }
-// from a book page the section links navigate to the home page section
+// from a book page the section links navigate to the home page section, and Contacto to the contact form
 {
   const c = await context(b, { w: 360, h: 780, signedIn: false }); const p = await c.newPage();
   await p.goto(BASE + `/b/${b1.slug}`); await sleep(1200);
+  await tap(p, p.locator("button[aria-label='Abrir menú']")); await sleep(700); await tap(p, p.locator("[role=dialog] a:has-text('Cómo funciona')")); await sleep(2500);
+  t.check("from a book page, Cómo funciona goes to the home page section", new URL(p.url()).pathname === "/" && p.url().includes("#como-funciona"), p.url());
+  await p.goto(BASE + `/b/${b1.slug}`); await sleep(1200);
   await tap(p, p.locator("button[aria-label='Abrir menú']")); await sleep(700); await tap(p, p.locator("[role=dialog] a:has-text('Contacto')")); await sleep(2500);
-  t.check("from a book page, Contacto goes to the home page section", new URL(p.url()).pathname === "/" && p.url().includes("#contacto"), p.url());
+  t.check("from a book page, Contacto opens the contact form (/contacto)", new URL(p.url()).pathname === "/contacto" && (await p.locator("[data-testid=contact-form]").count()) === 1, p.url());
   await c.close();
 }
 await b.close();

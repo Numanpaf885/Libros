@@ -13,7 +13,7 @@ import { setMe, useMe } from "@/lib/client/me";
 const LINKS = [
   { href: "/#catalogo", label: "Catálogo" },
   { href: "/#como-funciona", label: "Cómo funciona" },
-  { href: "/#contacto", label: "Contacto" },
+  { href: "/contacto", label: "Contacto" },
 ];
 const rowCls = "press flex min-h-14 w-full items-center border-b border-line text-left text-lg";
 

@@ -131,3 +131,22 @@ export interface DownloadRecord {
   /** downloads.method (column added later); "" for older rows */
   method: DownloadMethod | "";
 }
+
+export type MessageStatus = "nuevo" | "leído" | "respondido" | "archivado";
+/** One row of the `messages` tab (the contact form). Text is stored and shown exactly as typed, as plain text. */
+export interface MessageRecord {
+  id: string;
+  created_at: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  /** the account that sent it ("" when signed out) and its username at that moment */
+  user_id: string;
+  username: string;
+  status: MessageStatus;
+  admin_note: string;
+  replied_at: string;
+  /** HMAC-SHA256 of the sender's IP with HASH_PEPPER (never the IP) */
+  ip_hash: string;
+}

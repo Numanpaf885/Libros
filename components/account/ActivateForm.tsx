@@ -21,12 +21,14 @@ export default function ActivateForm() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [offer, setOffer] = useState<Me | null>(null);
+  const [agree, setAgree] = useState(false);
   const mismatch = pw2.length > 0 && pw !== pw2;
   const leave = () => { router.replace("/"); router.refresh(); };
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (pw !== pw2) { setError("Las contraseñas no coinciden."); return; }
+    if (!agree) { setError("Para activar tu cuenta tienes que aceptar la Política de privacidad."); return; }
     setBusy(true); setError("");
     const f = new FormData(e.currentTarget);
     try {
@@ -65,8 +67,12 @@ export default function ActivateForm() {
         <input id="confirm-password" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required maxLength={72} aria-invalid={mismatch} className="field" />
         {mismatch && <p className="err mt-2">Las contraseñas no coinciden.</p>}
       </div>
+      <label className="flex min-h-11 items-start gap-3 text-[15px]">
+        <input type="checkbox" id="accept-privacy" className="mt-1 h-5 w-5 shrink-0" checked={agree} onChange={(e) => setAgree(e.target.checked)} required />
+        <span>Acepto la <Link href="/privacidad" target="_blank" className="underline underline-offset-4">Política de privacidad</Link></span>
+      </label>
       {error && <p role="alert" className="err">{error}</p>}
-      <button aria-busy={busy} disabled={busy || !code || pw.length < 10 || pw !== pw2} className="btn btn-primary min-h-11">Activar cuenta</button>
+      <button aria-busy={busy} disabled={busy || !code || pw.length < 10 || pw !== pw2 || !agree} className="btn btn-primary min-h-11">Activar cuenta</button>
       <p className="text-center text-[15px]"><Link href="/entrar" className="underline underline-offset-4">¿Ya tienes cuenta? Entra</Link></p>
     </form>
   );

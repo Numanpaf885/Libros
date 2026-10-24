@@ -31,6 +31,8 @@ function load(): State {
       passkeys: [],
       bookmarks: [],
       downloads: [],
+      messages: [],
+      settings: [],
     };
   }
   // Older mock files do not have the tabs added later.
