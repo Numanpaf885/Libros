@@ -392,6 +392,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const [legalDone, setLegalDone] = useState(true); // the owner and contact email for the legal pages are filled in
   const load = () => setVersion((v) => v + 1);
   const [booksErr, setBooksErr] = useState(""); // the book list could not be loaded: "Reintentar"
+  const [slow, setSlow] = useState(false); // no answer yet after a while: offer "Reintentar" without waiting for the server's own limit
   const [outdated, setOutdated] = useState(false); // the sheet lacks tabs or columns: some features are hidden
 
   useEffect(() => {
@@ -405,6 +406,13 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       });
     return () => { dead = true; };
   }, [version, router, toast]);
+
+  // The list normally arrives in well under a second; after 7 s say so (the request keeps going and replaces this).
+  useEffect(() => {
+    if (books !== null || booksErr) return;
+    const t = setTimeout(() => setSlow(true), 7_000);
+    return () => clearTimeout(t);
+  }, [books, booksErr, version]);
 
   useEffect(() => {
     let dead = false;
@@ -488,8 +496,9 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
       <UploadCard onDone={load} phone={phone} extras={extras} text={text} />
 
-      {books === null && booksErr ? (
-        <ErrorState title="No se han podido cargar los libros" text={booksErr} onRetry={() => { setBooksErr(""); load(); }} />
+      {books === null && (booksErr || slow) ? (
+        <ErrorState title="No se han podido cargar los libros" text={booksErr || "La hoja de cálculo está tardando en responder. Puedes esperar un poco más o reintentar."}
+          onRetry={() => { setBooksErr(""); setSlow(false); load(); }} />
       ) : books === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-28 rounded-card" /></div>
       ) : books.length === 0 ? (

@@ -41,7 +41,8 @@ const errors = [];
 {
   const c = await context(browser, { w: 390, h: 844, notice: true }); const p = await c.newPage();
   p.on("pageerror", (e) => errors.push(String(e)));
-  for (const url of ["/", `/b/${pub.slug}`]) { const r = await p.goto(BASE + url); t.check(`${url} works`, r.status() === 200); }
+  // networkidle: the next navigation never races the previous page's hydration (which would make goto return null)
+  for (const url of ["/", `/b/${pub.slug}`]) { const r = await p.goto(BASE + url, { waitUntil: "networkidle" }); t.check(`${url} works`, r?.status() === 200, String(r?.status())); }
   t.check("the cookie notice still shows", !!(await p.waitForSelector("[data-testid=cookie-notice]", { timeout: 10000 }).catch(() => null)));
   await p.goto(BASE + "/contacto");
   t.check("/contacto: «estará disponible muy pronto», no form", (await p.locator("main").innerText()).includes("El formulario de contacto estará disponible muy pronto.") && (await p.getByTestId("contact-form").count()) === 0);
