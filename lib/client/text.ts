@@ -83,6 +83,7 @@ function isModern(el: Element) {
  */
 function onPointerDown(e: PointerEvent) {
   pointerIsDown = true;
+  prevRange = null;
   const target = e.target instanceof Element ? e.target : null;
   const here = target?.closest(".text-layer") ?? null;
   const margin = here && target?.closest(".text-margin") ? here : null;
@@ -90,6 +91,13 @@ function onPointerDown(e: PointerEvent) {
     if (el === margin) el.setAttribute("data-sel", "margin");
     else el.removeAttribute("data-sel");
     if (el === here) el.setAttribute("data-selecting", "");
+  }
+  // .tl-end goes next to the span the drag starts on now: the first move may come before the selectionchange event
+  const span = target?.closest("span[data-i]");
+  const info = here ? layers.get(here) : undefined;
+  if (span?.parentElement && info && !(modern ??= isModern(here!))) {
+    setSelect(info.end, "text");
+    span.parentElement.insertBefore(info.end, span.nextSibling);
   }
 }
 /** After the browser has handled the release (it may place the selection's end once more where the pointer is). */

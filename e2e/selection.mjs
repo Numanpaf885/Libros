@@ -169,15 +169,21 @@ const codeN = await codeFor(N.id);
   await drag(p, hb);
   t.check("running header: a drag that starts on it selects it", (await copied(p)) === MARGIN.header);
   const into = await wordsBox(p, 1, "Un avión", "llamada");
+  await p.evaluate(() => getSelection().removeAllRanges()); // pressing on selected text would drag it, not select
   await drag(p, { x0: hb.x0, y0: hb.y0, x1: into.x1, y1: into.y1 });
   const hm = await copied(p);
   t.check("running header: a drag from it into the body stays in the margin", hm.includes(MARGIN.header) && !/avión|sustentación aparece/.test(hm), JSON.stringify(hm));
   await scrollToText(p, 1, "ala entra en pérdida.", 120);
   const end = await wordsBox(p, 1, "ala entra", "pérdida.");
   const pn = await p.evaluate((sel) => { const s = [...document.querySelectorAll(`${sel} .text-margin span`)].find((x) => x.textContent === "37"); const r = s.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, layer(1));
-  await drag(p, { x0: end.x0, y0: end.y0, x1: pn.x, y1: pn.y });
-  const tp = await touched(p, 1), cp = await copied(p);
-  t.check("a drag from the body onto the page number never selects it", pn.y < 890 && !tp.margin.length && !cp.includes(MARGIN.footer) && !cp.includes(MARGIN.pageNo), JSON.stringify({ y: pn.y, margin: tp.margin, cp }));
+  // three quick drags (few, long moves: the first one may come before the browser reports the selection change)
+  const bad = [];
+  for (let k = 0; k < 3; k++) {
+    await p.mouse.move(end.x0, end.y0); await p.mouse.down(); await p.mouse.move(pn.x, pn.y, { steps: 2 + k }); await p.mouse.up(); await sleep(150);
+    const tp = await touched(p, 1), cp = await copied(p);
+    if (tp.margin.length || cp.includes(MARGIN.footer) || cp.includes(MARGIN.pageNo) || cp.includes("densidad")) bad.push({ margin: tp.margin, cp });
+  }
+  t.check("a drag from the body onto the page number never selects it, nor jumps to the next column", pn.y < 890 && !bad.length, JSON.stringify({ y: pn.y, bad }));
   if (shots) { // the debug overlay: the layer in red over the page, the rotated title over the printed one
     await p.evaluate(() => getSelection().removeAllRanges());
     await p.addStyleTag({ content: ".text-layer span { color: rgba(220,0,0,.85) !important; }" });
