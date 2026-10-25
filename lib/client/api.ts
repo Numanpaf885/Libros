@@ -16,8 +16,12 @@ const ES: Record<string, string> = {
 };
 const tr = (m: string) => ES[m] ?? m;
 
-/** No request to our own API may spin forever: the server answers within ~9 s even when Google is down. */
-export const API_TIMEOUT_MS = 20_000;
+/**
+ * No request to our own API may spin forever. Pages get the server's answer within ~9 s even when Google is down
+ * (its own limits); this is the last resort for a dead connection, above every server path (completing an admin's
+ * PDF upload may take R2 up to 30 s).
+ */
+export const API_TIMEOUT_MS = 60_000;
 export const OFFLINE_TEXT = "No se ha podido conectar. Comprueba tu conexión e inténtalo de nuevo.";
 export const SLOW_TEXT = "El servidor tarda demasiado en responder. Inténtalo de nuevo en unos segundos.";
 /** fetch with a time limit; network failures and timeouts become Spanish ApiErrors. */
