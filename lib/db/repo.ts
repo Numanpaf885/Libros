@@ -22,14 +22,20 @@ type Entry = { at: number; rows: string[][]; retryAt?: number };
 const cache = (globalThis as unknown as { __readCache?: Map<string, Entry> });
 cache.__readCache ??= new Map();
 const loading = new Map<string, Promise<string[][]>>();
+/** Bumped by every local write: a read that started before it must not put the old rows back in the cache. */
+const generation = new Map<string, number>();
 async function cached(tab: string): Promise<string[][]> {
   const m = cache.__readCache!;
   const hit = m.get(tab);
   if (hit && (Date.now() - hit.at < SHEET_CACHE_MS || Date.now() < (hit.retryAt ?? 0))) return hit.rows;
   let p = loading.get(tab);
   if (!p) {
-    p = table().list(tab).then((rows) => { m.set(tab, { at: Date.now(), rows }); return rows; }).finally(() => loading.delete(tab));
-    loading.set(tab, p);
+    const gen = generation.get(tab) ?? 0;
+    const job: Promise<string[][]> = table().list(tab)
+      .then((rows) => { if ((generation.get(tab) ?? 0) === gen) m.set(tab, { at: Date.now(), rows }); return rows; })
+      .finally(() => { if (loading.get(tab) === job) loading.delete(tab); });
+    p = job;
+    loading.set(tab, job);
   }
   try {
     return await p;
@@ -40,10 +46,15 @@ async function cached(tab: string): Promise<string[][]> {
     return hit.rows;
   }
 }
-const bust = (tab: string) => cache.__readCache!.delete(tab);
+/** After a local write: the next read is fresh (an older read still on its way is not shared nor cached). */
+const bust = (tab: string) => {
+  cache.__readCache!.delete(tab);
+  loading.delete(tab);
+  generation.set(tab, (generation.get(tab) ?? 0) + 1);
+};
 /** Drop every cached tab (after "Actualizar base de datos" added columns: rows are read again at their new width). */
 export function forgetReadCache() {
-  cache.__readCache!.clear();
+  for (const tab of [...cache.__readCache!.keys(), ...loading.keys()]) bust(tab);
 }
 
 const toBook = (r: string[]): Book => ({
