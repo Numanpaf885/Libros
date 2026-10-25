@@ -133,6 +133,20 @@ The text is stored in R2 next to the page images (`<book>/text/0001-0020.json`, 
 5. **Usuarios:** **Exportar datos** downloads a JSON file with everything the site keeps about a reader (no password or code hashes), for access and portability requests. When deleting a reader, **Anonimizar también su historial de descargas y mensajes** replaces their name, username and email with "Usuario eliminado" in those rows.
 6. The legal texts describe what the code does today. Read them once; if you change what the site stores, update them (and the cookie list in `lib/cookie-inventory.ts`).
 
+## When Google Sheets or R2 is slow or down
+
+The site never waits for ever:
+- **Limits:** a Google Sheets call gives up after 8 seconds (retries for "too many requests" included) and an R2 call after 5 seconds.
+- **After a failure:** the site stops asking Google for 10–20 seconds, so a struggling sheet or a used-up quota gets time to recover.
+- **What readers see:** pages keep showing the data they already had. With nothing to show, they display a Spanish message with **Reintentar**.
+- **Legal pages:** they never wait for the sheet.
+- **Missing tabs:** a tab that does not exist yet is never requested (Google would reject the whole read). Its feature stays hidden and the admin says «Actualiza la base de datos en Mantenimiento».
+- **Column order:** columns are found by their header name, so their order in the sheet does not matter. Columns the app does not know are left alone.
+
+To see what is going on:
+- `/admin` → **Mantenimiento** → **Estado del sistema** shows whether the sheet and R2 answer, how fast, and which tabs or columns are missing.
+- `https://<your site>/api/health` answers `{"ok":true}` (or `{"ok":false}` with status 503) for an uptime monitor. Signed in as admin, it also returns the details.
+
 ## Things worth knowing
 
 - **Codes are shown once.** They are stored hashed, so **Copiar enlace** only works right after you create or change them. To re-send one, use **Cambiar código** (keeps the label and expiry).

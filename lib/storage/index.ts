@@ -27,6 +27,8 @@ export interface Storage {
   listParts(key: string, uploadId: string): Promise<{ part: number; size: number; etag: string }[]>;
   completeMultipart(key: string, uploadId: string, parts: { part: number; etag: string }[]): Promise<void>;
   abortMultipart(key: string, uploadId: string): Promise<void>;
+  /** For /api/health: one tiny request (throws when the storage cannot be reached in time). */
+  ping(): Promise<void>;
 }
 export const storage = (): Storage => {
   assertSafeConfig();

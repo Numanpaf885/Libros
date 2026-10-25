@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText, postJson } from "@/lib/client/api";
@@ -24,6 +25,7 @@ export default function AccountClient({ user }: { user: { username: string; disp
   const router = useRouter();
   const toast = useToast();
   const [books, setBooks] = useState<BookRow[] | null>(null);
+  const [booksErr, setBooksErr] = useState("");
   const [keys, setKeys] = useState<PasskeyRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [cur, setCur] = useState("");
@@ -35,11 +37,12 @@ export default function AccountClient({ user }: { user: { username: string; disp
   const supported = usePasskeySupport();
 
   const loadKeys = useCallback(() => api<{ passkeys: PasskeyRow[] }>("/api/me/passkeys").then((r) => setKeys(r.passkeys)).catch(() => setKeys([])), []);
+  const loadBooks = useCallback(() => api<{ books: BookRow[] }>("/api/me/books").then((r) => { setBooks(r.books); setBooksErr(""); }).catch((e) => setBooksErr(errText(e))), []);
   useEffect(() => {
     void refreshMe();
-    api<{ books: BookRow[] }>("/api/me/books").then((r) => setBooks(r.books)).catch(() => setBooks([]));
+    void loadBooks();
     void loadKeys();
-  }, [loadKeys]);
+  }, [loadKeys, loadBooks]);
 
   const leave = () => { setMe(null); router.replace("/"); router.refresh(); };
   async function logout() { await postJson("/api/me/logout"); leave(); }
@@ -83,7 +86,9 @@ export default function AccountClient({ user }: { user: { username: string; disp
 
       <section aria-labelledby="mis-libros" className="card p-5 sm:p-6">
         <h2 id="mis-libros" className="text-2xl">Mis libros</h2>
-        {books === null ? (
+        {books === null && booksErr ? (
+          <ErrorState className="mt-4" title="No se han podido cargar tus libros" text={booksErr} onRetry={() => { setBooksErr(""); void loadBooks(); }} />
+        ) : books === null ? (
           <div className="skeleton mt-4 h-20 rounded-card" aria-label="Cargando" />
         ) : books.length === 0 ? (
           <p className="hint mt-3">Todavía no tienes libros. Cuando el propietario te asigne alguno, o introduzcas un código de acceso, aparecerán aquí.</p>

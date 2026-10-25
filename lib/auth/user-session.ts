@@ -4,6 +4,7 @@ import { COOKIE_SECURE, sessionSecret, USER_COOKIE, USER_TTL_S } from "../config
 import { getUserById } from "../db/users";
 import type { UserRecord } from "../types";
 import { cookieFrom } from "./admin";
+import { isUnavailable } from "../db/errors";
 
 const RENEW_AFTER_S = 24 * 60 * 60;
 
@@ -43,7 +44,9 @@ export async function userFromToken(token: string | undefined): Promise<UserSess
     if (!user || user.status !== "active" || user.session_version !== payload.sv) return null;
     const age = Math.floor(Date.now() / 1000) - (payload.iat ?? 0);
     return { user, renew: age > RENEW_AFTER_S };
-  } catch {
+  } catch (e) {
+    // the sheet not answering is not "signed out": the caller shows "Reintentar" (or renders without the account)
+    if (isUnavailable(e)) throw e;
     return null;
   }
 }

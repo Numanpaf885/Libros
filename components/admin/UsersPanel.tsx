@@ -1,7 +1,8 @@
 "use client";
 import { labelOf, labelTotal, parseLabels } from "@/lib/page-labels";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
@@ -195,10 +196,12 @@ export default function UsersPanel({ books }: { books: AdminBook[] }) {
   const [display, setDisplay] = useState("");
   const [choice, setChoice] = useState<Choice>({ all: true, ids: [] });
   const [error, setError] = useState("");
+  const [loadErr, setLoadErr] = useState("");
+  const shown = useRef(false); // the list is on screen: a later failure is a toast, not the error state
 
   useEffect(() => {
     let dead = false;
-    api<{ users: UserView[]; downloads_available?: boolean }>("/api/admin/users").then((r) => { if (!dead) { setUsers(r.users); setDl(!!r.downloads_available); } }).catch((e) => { if (!dead) toast("error", errText(e)); });
+    api<{ users: UserView[]; downloads_available?: boolean }>("/api/admin/users").then((r) => { if (!dead) { shown.current = true; setUsers(r.users); setDl(!!r.downloads_available); setLoadErr(""); } }).catch((e) => { if (dead) return; if (shown.current) toast("error", errText(e)); else setLoadErr(errText(e)); });
     return () => { dead = true; };
   }, [version, toast]);
 
@@ -236,7 +239,9 @@ export default function UsersPanel({ books }: { books: AdminBook[] }) {
         <button aria-busy={busy} disabled={busy || !username || !display.trim() || (!choice.all && choice.ids.length === 0)} className="btn btn-primary min-h-11">Crear usuario y generar código</button>
       </form>
 
-      {users === null ? (
+      {users === null && loadErr ? (
+        <ErrorState title="No se han podido cargar los usuarios" text={loadErr} onRetry={() => { setLoadErr(""); reload(); }} />
+      ) : users === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-40 rounded-card" /></div>
       ) : users.length === 0 ? (
         <div className="card px-6 py-12 text-center"><h2 className="text-3xl">Todavía no hay usuarios</h2><p className="mt-2 text-muted">Crea el primero arriba y compárteles el código de activación.</p></div>

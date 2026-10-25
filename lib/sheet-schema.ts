@@ -3,10 +3,11 @@
 // file directly in Node, so it imports nothing at runtime and uses only TypeScript that Node can strip.
 //
 // A feature that needs a new tab adds it to TABS. A feature that needs a new column on an existing tab adds it at the
-// END of that tab's EXTRA_COLS list (never in the middle, never renamed): the app reads columns by position.
+// END of that tab's EXTRA_COLS list (never in the middle, never renamed). The app finds each column by its header NAME
+// (lib/db/sheets.ts), so the order in the sheet does not matter; this list is the order the app's rows use.
 // Updating a sheet only ever creates missing tabs and writes missing header names after the last header of row 1.
 // It never reorders, renames or deletes anything and never touches a data row.
-import type { sheets_v4 } from "googleapis";
+import type { Common, sheets_v4 } from "googleapis";
 
 /** Every tab, with the columns it had when it was created, in sheet order. */
 export const TABS = {
@@ -57,7 +58,7 @@ export interface TabStatus {
   columns: string[];
   /** expected columns that are not in row 1 */
   missing: string[];
-  /** expected columns that are in row 1, but not where the app looks for them */
+  /** expected columns that are in row 1 in another order (information only: columns are found by name) */
   misplaced: string[];
 }
 export type Change = { kind: "tab"; tab: TabName } | { kind: "column"; tab: TabName; column: string };
@@ -113,26 +114,29 @@ function colLetter(n: number): string {
   return s;
 }
 
-/** The real Google Sheet. `retry` wraps every API call (the app passes its quota-aware retry). */
-export function googleSheetAdmin(api: sheets_v4.Sheets, spreadsheetId: string, retry: <T>(fn: () => Promise<T>) => Promise<T> = (fn) => fn()): SheetAdmin {
+/**
+ * The real Google Sheet. `retry` wraps every API call and passes it the request options (the app passes its
+ * time budget and quota-aware retry: a timeout, an abort signal, and googleapis' own retries switched off).
+ */
+export function googleSheetAdmin(api: sheets_v4.Sheets, spreadsheetId: string, retry: <T>(fn: (o?: Common.MethodOptions) => Promise<T>) => Promise<T> = (fn) => fn()): SheetAdmin {
   return {
     async tabs() {
-      const meta = await retry(() => api.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" }));
+      const meta = await retry((o) => api.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" }, o));
       return (meta.data.sheets ?? []).map((x) => x.properties?.title ?? "").filter(Boolean);
     },
     async headerRows(tabs) {
-      const res = await retry(() => api.spreadsheets.values.batchGet({ spreadsheetId, ranges: tabs.map((t) => `${t}!1:1`) }));
+      const res = await retry((o) => api.spreadsheets.values.batchGet({ spreadsheetId, ranges: tabs.map((t) => `${t}!1:1`) }, o));
       return Object.fromEntries(tabs.map((t, i) => [t, (res.data.valueRanges?.[i]?.values?.[0] ?? []).map((c) => String(c ?? ""))]));
     },
     async createTabs(tabs) {
-      await retry(() => api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: tabs.map((title) => ({ addSheet: { properties: { title } } })) } }));
+      await retry((o) => api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: tabs.map((title) => ({ addSheet: { properties: { title } } })) } }, o));
     },
     async writeHeaders(cells) {
       // RAW: header names are stored as typed text. Each range is a stretch of row 1 only.
-      await retry(() => api.spreadsheets.values.batchUpdate({
+      await retry((o) => api.spreadsheets.values.batchUpdate({
         spreadsheetId,
         requestBody: { valueInputOption: "RAW", data: cells.map((c) => ({ range: `${c.tab}!${colLetter(c.from)}1:${colLetter(c.from + c.names.length - 1)}1`, values: [c.names] })) },
-      }));
+      }, o));
     },
   };
 }

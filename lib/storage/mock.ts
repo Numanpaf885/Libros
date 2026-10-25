@@ -130,3 +130,8 @@ export async function completeMultipart(key: string, uploadId: string, parts: { 
 export async function abortMultipart(_key: string, uploadId: string) {
   fs.rmSync(stage(uploadId), { recursive: true, force: true });
 }
+/** For /api/health: the local folder is there and writable. */
+export async function ping() {
+  fs.mkdirSync(ROOT, { recursive: true });
+  fs.accessSync(ROOT, fs.constants.W_OK);
+}

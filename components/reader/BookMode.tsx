@@ -48,7 +48,7 @@ const idle = (fn: () => void) => {
 };
 
 /** One page: its canvas (never an <img>), drawn before it is ever shown, or a shimmering skeleton. */
-function PageFace({ slug, n, w, h, version, failed, marked, side, text }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean; marked: boolean; side: "l" | "r"; text: boolean }) {
+function PageFace({ slug, n, w, h, version, failed, marked, side, text, onRetry }: { slug: string; n: number; w: number; h: number; version: number; failed: boolean; marked: boolean; side: "l" | "r"; text: boolean; onRetry: (n: number) => void }) {
   const wrap = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -61,7 +61,13 @@ function PageFace({ slug, n, w, h, version, failed, marked, side, text }: { slug
   return (
     <div ref={wrap} className="page-face page-skeleton absolute inset-0 overflow-hidden" data-page={n}>
       {marked && <span className={`bm-ribbon ${side === "l" ? "bm-ribbon-l" : ""}`} data-testid="bookmark-ribbon" aria-hidden="true" />}
-      {failed && <p className="absolute inset-0 grid place-items-center p-4 text-center text-sm text-muted">No se ha podido cargar esta página.</p>}
+      {failed && (
+        <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-3 p-4 text-center" data-testid="page-failed">
+          <p className="text-sm text-muted">No se ha podido cargar esta página.</p>
+          {/* stopPropagation: the stage would take the pointer for a page turn and the click would never arrive */}
+          <button type="button" className="btn btn-sm" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRetry(n); }}><Icon name="rotate" size={16} />Reintentar</button>
+        </div>
+      )}
       {text && <FaceText slug={slug} n={n} w={w} h={h} />}
     </div>
   );
@@ -143,6 +149,10 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
         throw e;
       }),
     )), [slug, touchVersion, markFailed]);
+  const retry = useCallback((n: number) => {
+    markFailed(n, false);
+    ensure([n]).then(() => prepareFace(slug, n, pw, ph), () => {});
+  }, [slug, ensure, markFailed, pw, ph]);
   useEffect(() => {
     const near = (n: number) => Math.abs(unitOf(n, wide) - unit) <= KEEP_DISTANCE;
     let dead = false;
@@ -434,7 +444,7 @@ const BookMode = forwardRef<BookHandle, Props>(function BookMode({ slug, pageCou
   // ---- render: everything a turn needs is mounted BEFORE it starts (keyed by unit, rebuilt once after each turn) ----
   // Only the pages on screen get a text layer (never the faces that show only while a page turns), so a selection
   // can never take in the text of a hidden page.
-  const face = (n: number | null, onScreen = false) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} marked={!!marks?.has(n)} side={wide && n % 2 === 0 ? "l" : "r"} text={text && onScreen} />);
+  const face = (n: number | null, onScreen = false) => (n === null ? null : <PageFace key={n} slug={slug} n={n} w={pw} h={ph} version={version} failed={failed.has(n)} marked={!!marks?.has(n)} side={wide && n % 2 === 0 ? "l" : "r"} text={text && onScreen} onRetry={retry} />);
   const slotCls = "absolute top-0 overflow-hidden bg-white outline outline-1 -outline-offset-1 outline-line";
   const pgs = (u: number) => pagesOfUnit(u, wide, pageCount);
   const [cl, cr] = pgs(unit);

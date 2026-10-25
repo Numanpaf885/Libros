@@ -11,7 +11,8 @@ const set = (next: State) => { state = next; listeners.forEach((l) => l()); };
 export async function refreshMe(): Promise<Me | null> {
   if (state.status === "idle") set({ ...state, status: "loading" });
   try {
-    const res = await fetch("/api/me", { cache: "no-store" });
+    const res = await fetch("/api/me", { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    if (res.status >= 500) { set({ status: "ready", user: state.user }); return state.user; } // down for a moment: not "signed out"
     const data = res.ok ? ((await res.json()) as { user: Me | null }) : { user: null };
     set({ status: "ready", user: data.user });
     return data.user;

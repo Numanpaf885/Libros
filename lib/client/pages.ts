@@ -9,12 +9,17 @@ const cache = new Map<string, Entry>();
 
 export class Unauthorized extends Error {}
 
+// Never wait forever: the link comes from our server (which answers within ~9 s even when Google is down), the bytes
+// straight from storage (a slow phone connection gets longer). A page that fails shows "Reintentar".
+const LINK_TIMEOUT_MS = 15_000;
+const IMAGE_TIMEOUT_MS = 30_000;
 async function fetchOnce(slug: string, n: number): Promise<ImageBitmap> {
-  const meta = await fetch(`/api/books/${encodeURIComponent(slug)}/pages/${n}`, { cache: "no-store" });
+  const meta = await fetch(`/api/books/${encodeURIComponent(slug)}/pages/${n}`, { cache: "no-store", signal: AbortSignal.timeout(LINK_TIMEOUT_MS) });
   if (meta.status === 401) throw new Unauthorized();
   if (!meta.ok) throw new Error("page failed");
   const { url } = (await meta.json()) as { url: string };
-  const img = await fetch(url, { cache: "no-store" });
+  const signal = AbortSignal.timeout(IMAGE_TIMEOUT_MS);
+  const img = await fetch(url, { cache: "no-store", signal });
   if (!img.ok) throw new Error("page failed");
   return createImageBitmap(await img.blob()); // decoded here, before the page can be shown
 }

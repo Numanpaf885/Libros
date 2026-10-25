@@ -71,7 +71,7 @@ export async function mergeLocalProgress(): Promise<void> {
     }
   } catch { /* storage blocked */ }
   try {
-    const res = await fetch("/api/me/progress/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: local.slice(0, 300) }) });
+    const res = await fetch("/api/me/progress/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: local.slice(0, 300) }), signal: AbortSignal.timeout(20_000) });
     if (!res.ok) return;
     const { progress } = (await res.json()) as { progress: Record<string, number> };
     for (const [slug, page] of Object.entries(progress)) {

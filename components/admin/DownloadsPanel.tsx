@@ -1,6 +1,7 @@
 "use client";
 import { parseLabels, rangeText } from "@/lib/page-labels";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
@@ -65,14 +66,15 @@ export function LogTable({ rows, showUser = true, showBook = true }: { rows: Log
 /** Newest downloads for one user or one book (inside their detail). */
 export function DownloadHistory({ filter }: { filter: LogFilter }) {
   const [data, setData] = useState<LogResponse | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify(filter);
   useEffect(() => {
     let dead = false;
-    api<LogResponse>(`/api/admin/downloads${qs(JSON.parse(key) as LogFilter)}`).then((r) => { if (!dead) setData(r); }).catch(() => { if (!dead) setFailed(true); });
+    api<LogResponse>(`/api/admin/downloads${qs(JSON.parse(key) as LogFilter)}`).then((r) => { if (!dead) { setData(r); setFailed(""); } }).catch((e) => { if (!dead) setFailed(errText(e)); });
     return () => { dead = true; };
-  }, [key]);
-  if (failed) return <p role="alert" className="err">No se pudo cargar el historial.</p>;
+  }, [key, attempt]);
+  if (failed) return <ErrorState title="No se pudo cargar el historial" text={failed} onRetry={() => { setFailed(""); setAttempt((a) => a + 1); }} />;
   if (!data) return <div className="skeleton h-16 rounded-card" aria-label="Cargando" />;
   if (!data.available) return null;
   const mine = "user" in filter && filter.user;
@@ -97,16 +99,20 @@ export default function DownloadsPanel() {
   const [dTo, setDTo] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<LogResponse | null>(null);
+  const [failed, setFailed] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const shown = useRef(false); // something is on screen: a later failure is a toast, not the error state
   const filter: LogFilter = { user, book, from: dFrom ? startOfDay(dFrom) : "", to: dTo ? endOfDay(dTo) : "" };
   const fkey = JSON.stringify(filter);
 
   useEffect(() => {
     let dead = false;
     api<LogResponse>(`/api/admin/downloads${qs(JSON.parse(fkey) as LogFilter, { page })}`)
-      .then((r) => { if (!dead) setData(r); })
-      .catch((e) => { if (!dead) toast("error", errText(e)); });
+      .then((r) => { if (!dead) { shown.current = true; setData(r); setFailed(""); } })
+      .catch((e) => { if (dead) return; if (shown.current) toast("error", errText(e)); else setFailed(errText(e)); });
     return () => { dead = true; };
-  }, [fkey, page, toast]);
+  }, [fkey, page, toast, attempt]);
+  if (!data && failed) return <ErrorState title="No se ha podido cargar el historial de descargas" text={failed} onRetry={() => { setFailed(""); setAttempt((a) => a + 1); }} />;
 
   const change = (fn: () => void) => { fn(); setPage(1); };
   const f = data?.filters;

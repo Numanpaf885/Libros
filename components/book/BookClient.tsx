@@ -5,22 +5,27 @@ import Cover from "@/components/home/Cover";
 import { meta as metaLine } from "@/components/home/types";
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeader";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import Sheet, { usePhone } from "@/components/ui/Sheet";
 import Viewer from "@/components/reader/Viewer";
 import { labelOf, parseLabels } from "@/lib/page-labels";
+import { ApiError, errText, request } from "@/lib/client/api";
 import { useMe } from "@/lib/client/me";
 
 export interface BookInfo { slug: string; title: string; author: string; category: string; year: string; description: string; pageCount: number; /** printed page numbering (JSON); "" = none */ pageLabels?: string; /** the pages have selectable text (and the admin allows copying) */ text?: boolean }
 interface Meta { title: string; page_count: number; signed_in?: boolean; progress?: number | null; can_download?: boolean }
 type Outcome = { ok: true; progress: number; canDownload: boolean } | { error: string };
 
+/** The reader's access: Meta when the book is open to them, null when it is locked. Throws when it could not be checked. */
 async function fetchMeta(slug: string): Promise<Meta | null> {
-  const res = await fetch(`/api/books/${encodeURIComponent(slug)}/meta`, { cache: "no-store" });
-  return res.ok ? ((await res.json()) as Meta) : null;
+  const res = await request(`/api/books/${encodeURIComponent(slug)}/meta`, { cache: "no-store" });
+  if (res.ok) return (await res.json()) as Meta;
+  if (res.status >= 500) throw new ApiError(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "No se ha podido comprobar tu acceso.");
+  return null; // 401 / 404: locked
 }
 async function tryUnlock(slug: string, code: string): Promise<Outcome> {
-  const res = await fetch(`/api/books/${encodeURIComponent(slug)}/unlock`, {
+  const res = await request(`/api/books/${encodeURIComponent(slug)}/unlock`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
@@ -55,6 +60,8 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
   const [saved, setSaved] = useState(0);
   const [sheet, setSheet] = useState(false);
   const [canDownload, setCanDownload] = useState(false); // signed in, with the download permission, and this book is theirs
+  const [failed, setFailed] = useState(""); // the access could not be checked (service down): "Reintentar"
+  const [attempt, setAttempt] = useState(0);
   const phone = usePhone(); // phones: the code is entered in a bottom sheet
   const me = useMe();
   const labels = useMemo(() => parseLabels(book.pageLabels, book.pageCount), [book.pageLabels, book.pageCount]);
@@ -94,9 +101,10 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
       setChecking(false);
       // A ?code= link and a #p= / #leer link go straight into the book.
       if (r.unlocked && (r.viaLink || r.hash.open)) open(r.hash.page);
-    }).catch(() => { if (!dead) { setError("Algo ha salido mal. Inténtalo de nuevo."); setChecking(false); } });
+    }).catch((e) => { if (!dead) { setFailed(errText(e)); setChecking(false); } });
     return () => { dead = true; };
-  }, [slug, book.pageCount, open]);
+  }, [slug, book.pageCount, open, attempt]);
+  const retry = () => { initial.current = null; setFailed(""); setChecking(true); setAttempt((a) => a + 1); };
 
   const close = useCallback(() => {
     setReading(null);
@@ -120,7 +128,7 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
                       if ("ok" in o) { remote.current = o.progress; setCanDownload(o.canDownload); setSheet(false); setUnlocked(true); setSaved(savedPage(slug, book.pageCount, o.progress)); open(h.page); }
                       else setError(o.error);
                       setBusy(false);
-                    }).catch(() => { setError("Algo ha salido mal. Inténtalo de nuevo."); setBusy(false); });
+                    }).catch((e) => { setError(errText(e)); setBusy(false); });
                   }}
                   className={phone ? "space-y-4" : "panel max-w-md space-y-4 p-5"}
                   noValidate
@@ -162,6 +170,8 @@ export default function BookClient({ book, contact, siteName }: { book: BookInfo
             <div className="mt-8">
               {checking ? (
                 <div className="skeleton h-40 max-w-md rounded-card" aria-label="Cargando" />
+              ) : failed ? (
+                <ErrorState title="No hemos podido comprobar tu acceso" text={failed} onRetry={retry} />
               ) : unlocked ? (
                 <div className="flex flex-wrap items-center gap-3">
                   {saved > 0 ? (

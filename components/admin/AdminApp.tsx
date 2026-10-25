@@ -4,10 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Logo } from "@/components/brand/Logo";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { useToast } from "@/components/ui/Toaster";
-import { api, ApiError, AuthError, errText } from "@/lib/client/api";
+import { api, ApiError, AuthError, errText, request } from "@/lib/client/api";
 import { fmtDate, fmtSize } from "@/lib/client/format";
 import { formatEta, uploadFlow, type Progress as UploadProgress, type UploadMode } from "@/lib/client/upload";
 import type { AdminBook } from "@/lib/types";
@@ -390,15 +391,17 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const [unread, setUnread] = useState(0); // contact messages still "nuevo" (badge on "Mensajes")
   const [legalDone, setLegalDone] = useState(true); // the owner and contact email for the legal pages are filled in
   const load = () => setVersion((v) => v + 1);
+  const [booksErr, setBooksErr] = useState(""); // the book list could not be loaded: "Reintentar"
+  const [outdated, setOutdated] = useState(false); // the sheet lacks tabs or columns: some features are hidden
 
   useEffect(() => {
     let dead = false;
     api<{ books: AdminBook[]; extras?: boolean }>("/api/admin/books")
-      .then((r) => { if (!dead) { setBooks(r.books); setExtras(!!r.extras); } })
+      .then((r) => { if (!dead) { setBooks(r.books); setExtras(!!r.extras); setBooksErr(""); } })
       .catch((e) => {
         if (dead) return;
         if (e instanceof AuthError) router.replace("/admin/login");
-        else toast("error", errText(e));
+        else setBooksErr(errText(e));
       });
     return () => { dead = true; };
   }, [version, router, toast]);
@@ -409,6 +412,9 @@ export default function AdminApp({ siteName }: { siteName: string }) {
     api<{ ready: boolean }>("/api/admin/text").then((r) => { if (!dead) setText(r.ready); }).catch(() => {});
     api<{ unread: number }>("/api/admin/messages?size=1").then((r) => { if (!dead) setUnread(r.unread); }).catch(() => {});
     api<{ available: boolean; complete?: boolean }>("/api/admin/settings").then((r) => { if (!dead) setLegalDone(!!r.complete); }).catch(() => {});
+    request("/api/health", { cache: "no-store" }).then((r) => r.json()).then((h: { sheets?: { tabs_missing: string[]; columns_missing: Record<string, string[]> } }) => {
+      if (!dead && h.sheets) setOutdated(h.sheets.tabs_missing.length > 0 || Object.keys(h.sheets.columns_missing).length > 0);
+    }).catch(() => {});
     return () => { dead = true; };
   }, [schema]);
   // Download history and contact messages are kept 12 months (as /privacidad says): older rows go, at most once a day.
@@ -433,6 +439,12 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       </header>
 
+      {outdated && tab !== "maintenance" && (
+        <div role="status" className="panel flex flex-wrap items-center justify-between gap-3 border-accent p-4" data-testid="outdated-banner">
+          <p className="min-w-0 flex-1 basis-64 text-[15px]"><strong className="font-semibold">Actualiza la base de datos en Mantenimiento.</strong> A la hoja de cálculo le faltan pestañas o columnas: las funciones que las usan están ocultas hasta entonces.</p>
+          <button type="button" className="btn btn-sm" onClick={() => setTab("maintenance")}>Ir a Mantenimiento</button>
+        </div>
+      )}
       {!legalDone && tab !== "legal" && (
         <div role="status" className="panel flex flex-wrap items-center justify-between gap-3 border-accent p-4" data-testid="legal-banner">
           <p className="min-w-0 flex-1 basis-64 text-[15px]"><strong className="font-semibold">Completa los datos legales.</strong> Las páginas de Privacidad, Cookies y Aviso legal necesitan tu nombre y un email de contacto.</p>
@@ -476,7 +488,9 @@ export default function AdminApp({ siteName }: { siteName: string }) {
       <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
       <UploadCard onDone={load} phone={phone} extras={extras} text={text} />
 
-      {books === null ? (
+      {books === null && booksErr ? (
+        <ErrorState title="No se han podido cargar los libros" text={booksErr} onRetry={() => { setBooksErr(""); load(); }} />
+      ) : books === null ? (
         <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-28 rounded-card" /></div>
       ) : books.length === 0 ? (
         <div className="card flex flex-col items-center gap-2 px-6 py-12 text-center"><Logo size={40} className="text-accent" /><h2 className="text-3xl">Todavía no hay libros</h2><p className="text-muted">Sube tu primer PDF arriba para empezar.</p></div>

@@ -104,10 +104,12 @@ export const mockTable: Table = {
     return load()[tab as TabName].map((r) => out(tab, r));
   },
   async listMany(tabs) {
-    guard(tabs.join("+"));
-    op("read", tabs.join("+"));
+    // like the real adapter: only the tabs that exist are read; a missing tab is simply absent from the result
+    const present = tabs.filter((t) => !missing(t));
+    if (!present.length) return {};
+    op("read", present.join("+"));
     const st = load();
-    return Object.fromEntries(tabs.map((t) => [t, st[t as TabName].map((r) => out(t, r))]));
+    return Object.fromEntries(present.map((t) => [t, st[t as TabName].map((r) => out(t, r))]));
   },
   async append(tab, row) {
     guard(tab);
