@@ -43,11 +43,20 @@ export default function TextPanel({ book }: { book: AdminBook }) {
   const [old, setOld] = useState(false);
   const ctl = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  // Only the latest load is shown, and if the switch changed while it was on its way, the switch keeps what is on
+  // screen (that answer is older). Two loads overlap when the panel mounts twice (development) or reloads after a task.
+  const loads = useRef(0);
+  const edits = useRef(0);
 
-  const load = useCallback(() => textState(book.id).then((s) => {
-    setSt(s); setLoadErr("");
-    return extractedBeforeRotation(book.id, s).then(setOld);
-  }).catch((e) => setLoadErr(errText(e))), [book.id]);
+  const load = useCallback(() => {
+    const mine = ++loads.current, at = edits.current;
+    return textState(book.id).then((s) => {
+      if (mine !== loads.current) return;
+      setSt((cur) => (at === edits.current || !cur ? s : { ...s, allow_copy: cur.allow_copy }));
+      setLoadErr("");
+      return extractedBeforeRotation(book.id, s).then((o) => { if (mine === loads.current) setOld(o); });
+    }).catch((e) => { if (mine === loads.current) setLoadErr(errText(e)); });
+  }, [book.id]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => ctl.current?.abort(), []); // leaving the panel pauses a running OCR (it continues from there)
 
@@ -101,6 +110,7 @@ export default function TextPanel({ book }: { book: AdminBook }) {
   }
 
   async function setAllow(on: boolean) {
+    edits.current++;
     setBusy("switch");
     setSt((s) => (s ? { ...s, allow_copy: on } : s)); // the switch moves at once; it goes back if saving fails
     try {
