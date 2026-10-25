@@ -304,11 +304,14 @@ for (const dark of [false, true]) {
     t.check("allow_copy off: copying does nothing", (await copied(r)) === "(vacío)");
     await c.close();
   }
+  const uiBefore = await p.getByTestId("allow-copy").isChecked();
+  const answer = p.waitForResponse((r) => r.url().includes(`/api/admin/books/${T1.id}/text`) && r.request().method() === "POST", { timeout: 15000 }).catch(() => null);
   await p.getByTestId("allow-copy").click();
   // (the panel's own hint has the same words and shows at once with the switch: wait for the save itself)
   let saved = false;
   for (let i = 0; i < 40 && !saved; i++) { saved = (await api(`/api/admin/books/${T1.id}/text`)).json.allow_copy === true; if (!saved) await sleep(250); }
-  t.check("switch on again: allow_copy = true", saved);
+  const res = await answer;
+  t.check("switch on again: allow_copy = true", saved, JSON.stringify({ uiBefore, uiAfter: await p.getByTestId("allow-copy").isChecked(), sent: res?.request().postData(), status: res?.status(), body: await res?.text().catch(() => null) }));
   await a.close();
 }
 

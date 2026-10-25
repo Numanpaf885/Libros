@@ -1,6 +1,6 @@
 // Helpers for the text-layer tests (mock mode): a generated PDF with real Spanish text whose word positions are known,
 // image pages with known text for OCR, and small text utilities.
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
 import { BASE, adminApi, adminContext, sleep } from "./lib.mjs";
 
 export const A4 = { w: 595.28, h: 841.89 };
@@ -192,4 +192,100 @@ export async function readText(api, bookId, pageCount) {
     for (const p of (await res.json()).pages) out[p.n] = p;
   }
   return out;
+}
+
+// ---- a textbook page with margin material (the side-title selection bug) ----
+export const MARGIN = {
+  header: "UNIDAD 2",
+  side: "AERODINÁMICA BÁSICA",
+  heading: "2.1 La sustentación",
+  intro: "Un avión se mantiene en el aire porque sus alas generan una fuerza hacia arriba llamada sustentación. Esta fuerza depende de la forma del perfil, de la superficie alar, de la densidad del aire y, sobre todo, de la velocidad del avión.",
+  note: "Recuerda: la sustentación aparece porque el aire que pasa por encima del ala se acelera y su presión baja. La diferencia de presión entre el intradós y el extradós empuja el ala hacia arriba y crece con el cuadrado de la velocidad.",
+  sub: "2.2 Factores que influyen",
+  col1: "El ángulo de ataque es el ángulo entre la cuerda del perfil y la dirección del viento relativo. Al aumentarlo, la sustentación crece hasta un valor máximo; a partir de ahí el flujo se desprende y el ala entra en pérdida.",
+  col2: "La densidad del aire disminuye con la altitud y con la temperatura. Por eso, en un aeródromo alto y en un día caluroso, el avión necesita más velocidad y más pista para despegar con el mismo peso.",
+  footer: "Manual de vuelo · Edición 2026",
+  pageNo: "37",
+};
+
+/**
+ * Two A4 pages laid out like a textbook page: a running header ("UNIDAD 2"), a coloured tab in the left margin with
+ * the side title, a heading and an introduction, a boxed note next to the tab, a sub-heading, a two-column section,
+ * a footer and the page number.
+ * - Page 1: the side title is rotated 90° (it reads upwards). The columns are written line by line across both
+ *   columns, as some PDF producers do, and the side title is written between the introduction and the note.
+ * - Page 2: the same page as many scanned-and-recognised ("searchable") PDFs store it: the side title as upright
+ *   letters one under the other, and every line written in printed order, row by row across the page.
+ * Returns the bytes and, per page, every element's lines ({s, x, top, w, size, words}) and the side tab box, as
+ * fractions of the page (top-left origin).
+ */
+export async function makeMarginPdf() {
+  const doc = await PDFDocument.create();
+  const times = await doc.embedFont(StandardFonts.TimesRoman);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const sans = await doc.embedFont(StandardFonts.Helvetica);
+  const { w: W, h: H } = A4;
+  const L = 70, R = 540, asc = new Map([[times, 0.683], [bold, 0.718], [sans, 0.718]]);
+  const out = [];
+  for (const variant of ["rotated", "letters"]) {
+    const page = doc.addPage([W, H]);
+    const ops = []; // [baseline, x, draw()] in the order they are written to the page
+    const truth = { tab: null };
+    const line = (key, s, x, base, font, size, color = rgb(0.1, 0.1, 0.1)) => {
+      const words = [];
+      let at = 0;
+      for (const part of s.split(" ")) {
+        const i = s.indexOf(part, at);
+        if (part) words.push({ s: part, x: (x + font.widthOfTextAtSize(s.slice(0, i), size)) / W, w: font.widthOfTextAtSize(part, size) / W });
+        at = i + part.length;
+      }
+      (truth[key] ??= []).push({ s, x: x / W, top: (H - base - asc.get(font) * size) / H, w: font.widthOfTextAtSize(s, size) / W, size, words });
+      ops.push([base, x, () => page.drawText(s, { x, y: base, size, font, color })]);
+    };
+    const para = (key, text, x, base, width, font, size, lead) => {
+      const lines = wrap(text, font, size, width, 0);
+      lines.forEach((l, i) => line(key, l.s, x, base - i * lead, font, size));
+      return base - lines.length * lead;
+    };
+    // graphics first (not text)
+    page.drawLine({ start: { x: L, y: 798 }, end: { x: R, y: 798 }, thickness: 0.6, color: rgb(0.4, 0.4, 0.4) });
+    page.drawRectangle({ x: 0, y: 400, width: 38, height: 360, color: rgb(0.12, 0.32, 0.55) });
+    page.drawRectangle({ x: L - 6, y: 548, width: R - L + 12, height: 96, color: rgb(0.93, 0.95, 0.99), borderColor: rgb(0.12, 0.32, 0.55), borderWidth: 0.8 });
+    page.drawLine({ start: { x: L, y: 62 }, end: { x: R, y: 62 }, thickness: 0.6, color: rgb(0.4, 0.4, 0.4) });
+
+    line("header", MARGIN.header, L, 806, bold, 8.5);
+    line("heading", MARGIN.heading, L, 762, bold, 17);
+    para("intro", MARGIN.intro, L, 734, R - L, times, 11, 14.2);
+    const sw = bold.widthOfTextAtSize(MARGIN.side, 13);
+    if (variant === "rotated") {
+      // reads upwards; its glyph tops face left
+      ops.push([0, 0, () => page.drawText(MARGIN.side, { x: 25, y: 470, size: 13, font: bold, color: rgb(1, 1, 1), rotate: degrees(90) })]);
+      truth.tab = { x: (25 - 0.718 * 13) / W, y: (H - 470 - sw) / H, w: (0.718 * 13 + 3) / W, h: sw / H };
+    } else {
+      let base = 735;
+      const top = H - base - 0.718 * 11;
+      for (const ch of MARGIN.side) {
+        const y = base;
+        if (ch !== " ") ops.push([y, 14, () => page.drawText(ch, { x: 19 - bold.widthOfTextAtSize(ch, 11) / 2, y, size: 11, font: bold, color: rgb(1, 1, 1) })]);
+        base -= 15;
+      }
+      truth.tab = { x: 10 / W, y: top / H, w: 18 / W, h: (735 - base) / H };
+      truth.letters = [...MARGIN.side].filter((c) => c !== " ");
+    }
+    para("note", MARGIN.note, L + 8, 626, R - L - 16, times, 11, 14.2);
+    line("sub", MARGIN.sub, L, 520, bold, 13);
+    const colW = (R - L - 22) / 2;
+    const c1 = wrap(MARGIN.col1, times, 11, colW, 0), c2 = wrap(MARGIN.col2, times, 11, colW, 0);
+    for (let i = 0; i < Math.max(c1.length, c2.length); i++) { // line by line across both columns
+      if (c1[i]) line("col1", c1[i].s, L, 494 - i * 14.2, times, 11);
+      if (c2[i]) line("col2", c2[i].s, L + colW + 22, 494 - i * 14.2, times, 11);
+    }
+    line("footer", MARGIN.footer, L, 46, sans, 8);
+    line("pageNo", MARGIN.pageNo, R - bold.widthOfTextAtSize(MARGIN.pageNo, 9), 46, bold, 9);
+    // page 1: in the order above; page 2: in printed order, row by row (top to bottom, then left to right)
+    const order = variant === "rotated" ? ops : [...ops].sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    for (const [, , draw] of order) draw();
+    out.push(truth);
+  }
+  return { bytes: await doc.save(), truth: out };
 }

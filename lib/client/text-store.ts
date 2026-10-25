@@ -2,7 +2,7 @@
 // Admin: storing the text of a book's pages (the reader's selectable layer) as JSON chunks of 20 pages, straight to
 // storage through presigned URLs, and reading back what is already stored (so extraction and OCR can continue).
 import { api } from "./api";
-import { chunkOf, chunkRange, parseChunk, TEXT_CHUNK, type PageText, type TextChunk, type TextItem } from "@/lib/text-layer";
+import { chunkOf, chunkRange, parseChunk, TEXT_CHUNK, TEXT_VERSION, type PageText, type TextChunk, type TextItem } from "@/lib/text-layer";
 import type { OpenPdf } from "./render-pdf";
 
 const route = (bookId: string) => `/api/admin/books/${bookId}/text`;
@@ -53,6 +53,21 @@ export async function readChunk(bookId: string, k: number, pageCount: number): P
 }
 
 /**
+ * Whether the book's PDF text was extracted before rotated text was kept (and the selection learnt the margins): the
+ * first chunk with PDF text is read and its pages checked. A failure to read counts as "no" (nothing to suggest).
+ */
+export async function extractedBeforeRotation(bookId: string, state: Pick<TextState, "pages" | "page_count">): Promise<boolean> {
+  const first = state.pages.indexOf("t");
+  if (first < 0) return false;
+  try {
+    const pages = await readChunk(bookId, chunkOf(first + 1), state.page_count);
+    return [...pages.values()].some((p) => p.src === "pdf" && p.items.length > 0 && (p.ver ?? 1) < TEXT_VERSION);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Collects the text of pages as they are read and uploads each chunk as soon as all its pages are in. Used while a
  * PDF is uploaded (an extra step: a failure here never stops the page images) and by "Extraer texto".
  */
@@ -62,7 +77,7 @@ export class ChunkWriter {
   async add(n: number, items: TextItem[]) {
     const k = chunkOf(n);
     const list = this.open.get(k) ?? [];
-    list.push({ n, src: "pdf", items });
+    list.push({ n, src: "pdf", ver: TEXT_VERSION, items });
     this.open.set(k, list);
     const { from, to } = chunkRange(k, this.pageCount);
     if (list.length === to - from + 1) {

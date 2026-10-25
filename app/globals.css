@@ -207,6 +207,18 @@ html[data-reading] .cookie-notice { display: none; }
 .text-layer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; font-family: sans-serif; cursor: text; }
 .reader-root .text-layer, .reader-root .text-layer * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 .text-layer ::selection, .text-layer::selection { background: var(--text-sel); color: transparent; }
+/* The margin (running header and footer, side tabs) is selectable only by a drag that starts on it (data-sel, set on
+   pointerdown); that drag then stays in the margin. Rotated text is never selectable. */
+.reader-root .text-layer .text-margin span, .reader-root .text-layer[data-sel="margin"] > span { -webkit-user-select: none; user-select: none; }
+.reader-root .text-layer[data-sel="margin"] .text-margin span:not(.tl-rot) { -webkit-user-select: text; user-select: text; }
+.text-layer .tl-rot { pointer-events: none; cursor: inherit; }
+/* While a drag selects (data-selecting), .tl-end covers the layer under the text (lib/client/text.ts moves it next to
+   the selection's end where needed), so empty space never makes the selection jump; the text the drag may not select
+   (the margin, or the body during a margin drag) lets the pointer through to it. */
+.text-layer > span, .text-layer .text-margin span { z-index: 1; }
+.reader-root .text-layer .tl-end { position: absolute; left: 0; right: 0; top: 100%; bottom: 0; z-index: 0; cursor: default; -webkit-user-select: none; user-select: none; }
+.text-layer[data-selecting] .tl-end { top: 0; }
+.text-layer[data-selecting]:not([data-sel="margin"]) .text-margin span, .text-layer[data-selecting][data-sel="margin"] > span { pointer-events: none; }
 /* Book mode with "Seleccionar texto" off: a mouse drag turns the page (touch keeps long-press selection) */
 @media (pointer: fine) { .book-no-select .text-layer { pointer-events: none; } }
 /* Book mode: no text in the leaves while a page turns (it costs frames in a 3D turn and shows nothing) */

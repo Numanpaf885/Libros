@@ -18,11 +18,12 @@ MOCK_MISSING_TABS=bookmarks MOCK_MISSING_COLUMNS=text_pages,allow_copy DATA_BACK
 node e2e/maintenance.mjs                # SCREENSHOTS=1 guarda capturas en screenshots/
 ```
 
-Texto seleccionable (subida con texto, capa del lector, copiar, alineación, «Extraer texto», reanudar, OCR, `allow_copy`, seguridad) y rendimiento:
+Texto seleccionable (subida con texto, capa del lector, copiar, alineación, «Extraer texto», reanudar, OCR, `allow_copy`, seguridad), selección con material en los márgenes (`selection.mjs`: el texto girado nunca se selecciona, la cabecera y el pie solo si el arrastre empieza en ellos, orden de lectura por columnas, fragmentos antiguos sin `r`, aviso «Vuelve a extraer» y OCR de la misma página) y rendimiento:
 
 ```bash
 DATA_BACKEND=mock npx next dev -p 3100
 node e2e/text.mjs                       # SCREENSHOTS=1 guarda capturas en screenshots/
+node e2e/selection.mjs                  # página con márgenes: título lateral girado, cabecera, pie, nota y dos columnas
 node e2e/perf-turn.mjs                  # fps al pasar página (doble página y móvil)
 npm run build && node e2e/bundle-size.mjs   # tamaño del JS del lector; comprueba que no lleva pdf.js ni tesseract.js
 ```
