@@ -46,7 +46,8 @@ const errors = [];
   for (const url of ["/", `/b/${pub.slug}`]) {
     const status = (await fetch(BASE + url)).status;
     await p.goto(BASE + url); await p.waitForLoadState("load"); await sleep(1500);
-    t.check(`${url} works`, status === 200 && (await p.locator("main h1, main h2").count()) > 0, String(status));
+    const shown = await p.waitForSelector("main h1, main h2", { timeout: 15_000 }).then(() => true, () => false);
+    t.check(`${url} works`, status === 200 && shown, String(status));
   }
   t.check("the cookie notice still shows", !!(await p.waitForSelector("[data-testid=cookie-notice]", { timeout: 10000 }).catch(() => null)));
   await p.goto(BASE + "/contacto");

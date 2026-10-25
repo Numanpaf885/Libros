@@ -305,8 +305,10 @@ for (const dark of [false, true]) {
     await c.close();
   }
   await p.getByTestId("allow-copy").click();
-  await p.waitForSelector("text=Los lectores pueden seleccionar y copiar el texto");
-  t.check("switch on again: allow_copy = true", (await api(`/api/admin/books/${T1.id}/text`)).json.allow_copy === true);
+  // (the panel's own hint has the same words and shows at once with the switch: wait for the save itself)
+  let saved = false;
+  for (let i = 0; i < 40 && !saved; i++) { saved = (await api(`/api/admin/books/${T1.id}/text`)).json.allow_copy === true; if (!saved) await sleep(250); }
+  t.check("switch on again: allow_copy = true", saved);
   await a.close();
 }
 
