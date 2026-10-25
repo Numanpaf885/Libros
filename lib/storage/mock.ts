@@ -5,7 +5,8 @@ import path from "node:path";
 import { sessionSecret } from "../config";
 import { GET_TTL_S, PUT_TTL_S } from "./constants";
 
-const ROOT = path.join(process.cwd(), ".data", "blobs");
+// Local test data, only known at run time: turbopackIgnore keeps the build from trying to trace (list) the folder.
+const ROOT = path.join(/* turbopackIgnore: true */ process.cwd(), ".data", "blobs");
 function safe(p: string): string {
   const full = path.resolve(ROOT, p);
   if (!full.startsWith(ROOT + path.sep)) throw new Error("bad path");

@@ -79,6 +79,11 @@ const PAGES = [
   await c.close();
   const a = await adminContext(browser, { w: 1440, h: 900, touch: false }); const ap = await a.newPage();
   await ap.goto(BASE + "/admin"); await sleep(2000); await a.close();
+  // and the error page (compiled on first use in dev: it must not count in the timings below)
+  await ctl({ fail429: 100_000 }); await reset();
+  const e = await context(browser, { w: 1440, h: 900, touch: false }); const ep = await e.newPage();
+  await ep.goto(BASE + "/"); await retryBtn(ep, 20_000).catch(() => {}); await e.close();
+  await quiet();
 }
 
 // ================= 1. messages and settings tabs missing =================
@@ -89,8 +94,10 @@ await reset(); await fetch(`${FAKE}/__stats/reset`, { method: "POST" });
     const ms = await timed(p, u, ready, 10_000);
     t.check(`tabs missing: ${name} loads within 3 s (${ms} ms)`, ms <= 3000);
   }
-  const ms = await timed(p, `/b/${book.slug}#leer`, (pg, max) => pg.waitForSelector(".page-face[data-ready='1'], [data-page] canvas.opacity-100", { timeout: max }));
-  t.check(`tabs missing: the reader shows a page from storage within 3 s (${ms} ms)`, ms <= 3000);
+  // the page image itself, from storage (the reader's opening animation is not part of loading)
+  const ms = await timed(p, `/b/${book.slug}#leer`, (pg, max) => pg.waitForResponse((r) => r.url().includes("/api/storage/local") && /\.webp/.test(r.url()) && r.status() === 200, { timeout: max }));
+  t.check(`tabs missing: the reader gets a page image from storage within 3 s (${ms} ms)`, ms <= 3000);
+  t.check("tabs missing: the reader shows it", !!(await p.waitForSelector(".page-face[data-ready='1'], [data-page] canvas.opacity-100", { timeout: 8000 }).catch(() => null)));
   await c.close();
   const s = await stats();
   t.check("tabs missing: no request ever names a missing tab (no 400)", !s.status["400"], JSON.stringify(s.status));
