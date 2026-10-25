@@ -6,7 +6,7 @@ import { useToast } from "@/components/ui/Toaster";
 import { api, ApiError, AuthError, errText } from "@/lib/client/api";
 import { runOcr } from "@/lib/client/ocr";
 import { openPdf, openPdfUrl } from "@/lib/client/render-pdf";
-import { extractText, PageCountError, textState, type TextState } from "@/lib/client/text-store";
+import { extractedBeforeRotation, extractText, PageCountError, textState, type TextState } from "@/lib/client/text-store";
 import { formatEta } from "@/lib/client/upload";
 import type { AdminBook } from "@/lib/types";
 
@@ -39,10 +39,15 @@ export default function TextPanel({ book }: { book: AdminBook }) {
   const [paused, setPaused] = useState(false);
   const [err, setErr] = useState("");
   const [ask, setAsk] = useState<null | (() => void)>(null);
+  /** the PDF text was extracted before rotated text and margins were handled: re-extracting improves the selection */
+  const [old, setOld] = useState(false);
   const ctl = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(() => textState(book.id).then((s) => { setSt(s); setLoadErr(""); }).catch((e) => setLoadErr(errText(e))), [book.id]);
+  const load = useCallback(() => textState(book.id).then((s) => {
+    setSt(s); setLoadErr("");
+    return extractedBeforeRotation(book.id, s).then(setOld);
+  }).catch((e) => setLoadErr(errText(e))), [book.id]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => ctl.current?.abort(), []); // leaving the panel pauses a running OCR (it continues from there)
 
@@ -125,6 +130,7 @@ export default function TextPanel({ book }: { book: AdminBook }) {
       </label>
 
       <div className="space-y-3 border-t border-line pt-4">
+        {old && busy !== "extract" && <p className="hint" role="note" data-testid="text-old">Vuelve a extraer el texto para mejorar la selección.</p>}
         {st.has_original && (
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className="btn btn-primary" aria-busy={busy === "extract"} disabled={busy !== null} onClick={() => confirmThen(() => void extract("original"))}>{processed ? "Volver a extraer" : "Extraer texto"}</button>

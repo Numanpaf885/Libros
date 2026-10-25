@@ -5,7 +5,7 @@
 // Each page is saved as soon as it is recognised, so a pause (or a closed tab) loses at most the page in progress.
 import { api } from "./api";
 import { finishText, putChunk, readChunk } from "./text-store";
-import { chunkOf, itemsFromOcr, type PageText } from "@/lib/text-layer";
+import { chunkOf, itemsFromOcr, TEXT_VERSION, type PageText } from "@/lib/text-layer";
 
 export interface OcrProgress { done: number; total: number; etaSec: number | null }
 const LANGS = ["spa", "eng"];
@@ -61,8 +61,7 @@ export async function runOcr(o: { bookId: string; pageCount: number; pages: numb
       // a terminated worker may never answer: the pause itself ends the wait
       const { data } = await Promise.race([worker.recognize(blob, {}, { text: false, blocks: true }), paused]);
       o.signal.throwIfAborted();
-      const lines = (data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines));
-      stored.set(n, { n, src: "ocr", items: itemsFromOcr(lines, size.w, size.h) });
+      stored.set(n, { n, src: "ocr", ver: TEXT_VERSION, items: itemsFromOcr(data.blocks ?? [], size.w, size.h) });
       await putChunk(o.bookId, chunk, [...stored.values()], o.signal);
       done++;
       const per = (Date.now() - t0) / done;
