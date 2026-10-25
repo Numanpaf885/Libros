@@ -1,8 +1,9 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { isMock, SHEET_CACHE_MS } from "../config";
+import { SHEET_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
 import type { AccessCode, AdminUser, Book } from "../types";
+import { mockTableOn } from "./backend";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import { deleteBookmarksForBook } from "./users";
@@ -10,25 +11,55 @@ import type { Table } from "./table";
 
 const table = (): Table => {
   assertSafeConfig();
-  return isMock() ? mockTable : sheetsTable;
+  return mockTableOn() ? mockTable : sheetsTable;
 };
 
 // Read cache (<= 60 s). Local writes invalidate it; on multi-instance deployments
-// other instances may see changes up to SHEET_CACHE_MS late.
-const cache = (globalThis as unknown as { __readCache?: Map<string, { at: number; rows: string[][] }> });
+// other instances may see changes up to SHEET_CACHE_MS late. When a refresh fails (Google slow or over quota) the
+// last good rows keep being used for a while, so the catalogue and the reader keep working.
+const STALE_RETRY_MS = 15_000;
+type Entry = { at: number; rows: string[][]; retryAt?: number };
+// On globalThis, like the cache itself, so every copy of this module (dev can load it twice) sees the same state.
+const cache = globalThis as unknown as {
+  __readCache?: Map<string, Entry>;
+  __readLoading?: Map<string, Promise<string[][]>>;
+  /** Bumped by every local write: a read that started before it must not put the old rows back in the cache. */
+  __readGeneration?: Map<string, number>;
+};
 cache.__readCache ??= new Map();
+const loading = (cache.__readLoading ??= new Map());
+const generation = (cache.__readGeneration ??= new Map());
 async function cached(tab: string): Promise<string[][]> {
   const m = cache.__readCache!;
   const hit = m.get(tab);
-  if (hit && Date.now() - hit.at < SHEET_CACHE_MS) return hit.rows;
-  const rows = await table().list(tab);
-  m.set(tab, { at: Date.now(), rows });
-  return rows;
+  if (hit && (Date.now() - hit.at < SHEET_CACHE_MS || Date.now() < (hit.retryAt ?? 0))) return hit.rows;
+  let p = loading.get(tab);
+  if (!p) {
+    const gen = generation.get(tab) ?? 0;
+    const job: Promise<string[][]> = table().list(tab)
+      .then((rows) => { if ((generation.get(tab) ?? 0) === gen) m.set(tab, { at: Date.now(), rows }); return rows; })
+      .finally(() => { if (loading.get(tab) === job) loading.delete(tab); });
+    p = job;
+    loading.set(tab, job);
+  }
+  try {
+    return await p;
+  } catch (e) {
+    if (!hit) throw e;
+    hit.retryAt = Date.now() + STALE_RETRY_MS;
+    console.warn(`[${tab}] refresh failed, using the copy from ${Math.round((Date.now() - hit.at) / 1000)} s ago:`, (e as Error).message);
+    return hit.rows;
+  }
 }
-const bust = (tab: string) => cache.__readCache!.delete(tab);
+/** After a local write: the next read is fresh (an older read still on its way is not shared nor cached). */
+const bust = (tab: string) => {
+  cache.__readCache!.delete(tab);
+  loading.delete(tab);
+  generation.set(tab, (generation.get(tab) ?? 0) + 1);
+};
 /** Drop every cached tab (after "Actualizar base de datos" added columns: rows are read again at their new width). */
 export function forgetReadCache() {
-  cache.__readCache!.clear();
+  for (const tab of [...cache.__readCache!.keys(), ...loading.keys()]) bust(tab);
 }
 
 const toBook = (r: string[]): Book => ({

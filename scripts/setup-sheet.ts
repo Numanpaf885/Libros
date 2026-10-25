@@ -30,7 +30,7 @@ for (const t of status) {
   const added = changes.flatMap((c) => (c.kind === "column" && c.tab === t.tab ? [c.column] : []));
   console.log(made ? `created tab: ${t.tab}` : `tab exists: ${t.tab}`);
   if (added.length) console.log(`  added header${added.length > 1 ? "s" : ""} to ${t.tab}: ${added.join(", ")}`);
-  if (t.misplaced.length) console.log(`  warning: ${t.tab} has ${t.misplaced.join(", ")} in another position than the app expects (fix it by hand)`);
+  if (t.misplaced.length) console.log(`  note: ${t.tab} has ${t.misplaced.join(", ")} in another order (fine: the app finds columns by their name)`);
 }
 if (!changes.length) console.log("Everything was already up to date.");
 console.log("Done. Add your admin row to the `admins` tab: username | bcrypt hash (npm run hash-password).");

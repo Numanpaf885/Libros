@@ -1,5 +1,9 @@
 import "server-only";
-/** Minimal row store. Rows are string[] in column order (header row excluded). */
+/**
+ * Minimal row store. Rows are string[] in the app's column order (lib/sheet-schema.ts: a tab's columns, then its
+ * EXTRA_COLS), header row excluded, whatever the order of the columns in the sheet itself. A column the sheet does not
+ * have reads as "" and is not written.
+ */
 export interface Table {
   list(tab: string): Promise<string[][]>;
   append(tab: string, row: string[]): Promise<void>;
@@ -7,7 +11,10 @@ export interface Table {
   updateById(tab: string, id: string, row: string[]): Promise<boolean>;
   /** Delete all rows whose column `col` equals value. */
   deleteWhere(tab: string, col: number, value: string): Promise<number>;
-  /** Several tabs in ONE read request (Sheets values.batchGet). */
+  /**
+   * Several tabs in ONE read request (Sheets values.batchGet). Only tabs that exist are read: a missing tab is absent
+   * from the result (never an error), so one missing optional tab cannot break the others.
+   */
   listMany(tabs: string[]): Promise<Record<string, string[][]>>;
   /** Several rows in ONE write request. */
   appendMany(tab: string, rows: string[][]): Promise<void>;

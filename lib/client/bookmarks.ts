@@ -48,7 +48,7 @@ const sorted = (l: Bookmark[]) => [...l].sort((a, b) => a.page - b.page);
 const json = { "Content-Type": "application/json" };
 async function fetchList(slug: string): Promise<{ available: boolean; bookmarks: Bookmark[] } | null> {
   try {
-    const r = await fetch(`/api/bookmarks?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
+    const r = await fetch(`/api/bookmarks?slug=${encodeURIComponent(slug)}`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
     return r.ok ? ((await r.json()) as { available: boolean; bookmarks: Bookmark[] }) : null;
   } catch { return null; }
 }
@@ -67,7 +67,7 @@ async function flush(slug: string) {
   b.firstAt = 0;
   b.inflight = true;
   try {
-    const r = await fetch("/api/bookmarks", { method: "POST", headers: json, body: JSON.stringify({ slug, ops }), keepalive: true });
+    const r = await fetch("/api/bookmarks", { method: "POST", headers: json, body: JSON.stringify({ slug, ops }), keepalive: true, signal: AbortSignal.timeout(20_000) });
     if (r.status === 401 || r.status === 404) { // signed out meanwhile: keep everything on the device
       b.queue.unshift(...ops);
       const items = applyOps(b.state.items, []);

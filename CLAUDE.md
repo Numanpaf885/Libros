@@ -17,6 +17,12 @@ Next.js App Router, React 19, TypeScript (strict, `noUnusedLocals`/`noUnusedPara
 - One button system (`.btn*` in `app/globals.css`), one modal/sheet (`components/ui`), one icon set (`components/ui/Icon`).
 - Every new cookie, localStorage/sessionStorage key or IndexedDB database must be added to `lib/cookie-inventory.ts` (the table on /cookies; `e2e/legal.mjs` fails on anything not listed). Only "Técnica necesaria" or "Preferencia" items are allowed as they are. Before any non-essential cookie or storage (analytics, advertising, third-party embeds) is added, a real consent banner with "Rechazar" (as easy as "Aceptar") must come first and nothing may be set before consent.
 - `/privacidad` describes what the code does: if you start storing a new personal datum, sending data to a new provider or keeping it longer, update that page in the same change.
+- No page may hang on an outside service. Google Sheets is only reached through `lib/db/sheets.ts` (`call()`: 8 s budget, bounded backoff on 429/5xx, googleapis' own retries off, a short pause after a failure) and R2 only through `lib/storage/r2.ts` (`timed()`: 5 s). Any new outside call gets a timeout too, and so does every client `fetch` (`request()` in `lib/client/api.ts`).
+- Never ask Google for a tab without knowing it exists: one missing range fails a whole batchGet with 400. `Table.listMany` reads only existing tabs; a missing optional tab is absent from the result, and its feature says «Actualiza la base de datos en Mantenimiento» in the admin only.
+- Columns are found by header NAME. `Table` rows are in `lib/sheet-schema.ts` order whatever the order in the sheet; unknown columns are ignored on read and kept on write.
+- "Google did not answer" is not "signed out", "locked" or "no data". Rethrow `isUnavailable(e)` errors (`lib/db/errors.ts`). API routes turn them into a 503 via `safe()`; pages use `softly()` (`lib/soft.ts`) to render with what they have, or fall to `app/error.tsx`. Both show «Reintentar», never an endless spinner.
+- Pages that must never wait (legal pages, footer) read settings with `getLegal()` (cache or empty).
+- After changing data access, run `e2e/resilience.mjs` (the real adapter against the fake Google API).
 
 ## Commands
 - `npm run dev` / `npm run build` / `npm run lint`

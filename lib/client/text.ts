@@ -10,10 +10,11 @@ const pending = new Map<string, Promise<Chunk>>();
 const done = new Map<string, Chunk>();
 
 async function fetchChunk(slug: string, k: number): Promise<Chunk> {
-  const meta = await fetch(`/api/books/${encodeURIComponent(slug)}/text/${k}`, { cache: "no-store" });
+  const meta = await fetch(`/api/books/${encodeURIComponent(slug)}/text/${k}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+  if (meta.status >= 500) throw new Error("text unavailable"); // the service is down for a moment: not remembered, asked again
   if (!meta.ok) return null; // no text for these pages (404), or the access has ended (the pages report that one)
   const { url } = (await meta.json()) as { url: string };
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
   if (!res.ok) return null;
   return parseChunk(await res.json().catch(() => null), k * TEXT_CHUNK + 1, (k + 1) * TEXT_CHUNK);
 }

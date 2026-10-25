@@ -5,6 +5,7 @@ import type { AccessCode, Book } from "../types";
 import { cookieFrom } from "./admin";
 import { userCanRead } from "./access";
 import { userFromRequest } from "./user-session";
+import { isUnavailable } from "../db/errors";
 
 export async function signReader(book: Book, code: AccessCode): Promise<{ token: string; maxAge: number }> {
   let maxAge = READER_TTL_S;
@@ -35,7 +36,8 @@ export async function verifyReaderToken(book: Book, token: string | undefined): 
     if (!code || code.book_id !== book.id || code.revoked) return null;
     if (code.expires_at && Date.parse(code.expires_at) <= Date.now()) return null;
     return code;
-  } catch {
+  } catch (e) {
+    if (isUnavailable(e)) throw e; // the sheet not answering does not lock the reader out: "Reintentar"
     return null;
   }
 }

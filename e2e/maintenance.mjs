@@ -82,7 +82,10 @@ const s0 = by(status0);
 t.check("status lists every tab of the schema", status0.map((x) => x.tab).join() === TAB_NAMES.join());
 t.check("status: bookmarks tab missing", s0.bookmarks?.exists === false && s0.bookmarks.missing.length === 6);
 t.check("status: books lacks exactly text_pages, allow_copy", JSON.stringify(s0.books?.missing) === JSON.stringify(["text_pages", "allow_copy"]), JSON.stringify(s0.books));
-t.check("status: every other tab complete", status0.filter((x) => x.tab !== "bookmarks" && x.tab !== "books").every((x) => x.exists && !x.missing.length && !x.misplaced.length));
+// With the fake Google API and FAKE_SHUFFLE=1 every tab has its columns in another order (plus an unknown one): the
+// app finds columns by name, so "complete" means nothing missing; the order is only checked on an unshuffled sheet.
+const shuffled = process.env.FAKE_SHUFFLE === "1";
+t.check("status: every other tab complete", status0.filter((x) => x.tab !== "bookmarks" && x.tab !== "books").every((x) => x.exists && !x.missing.length && (shuffled || !x.misplaced.length)));
 t.check("status: only tab and column names (no ids, keys or rows)", JSON.stringify(status0).length < 6000 && !/books\/[a-f0-9]{32}|\$2[aby]\$|@/.test(JSON.stringify(status0)));
 t.check("before: the app has no bookmarks tab (reader bookmarks stay on the device)", (await bookmarksAvailable()) === false);
 
@@ -146,7 +149,8 @@ t.check("UI run 2: 'Todo al día'", (await p.locator("[data-testid=maintenance-r
 for (const [w, theme] of [[390, "dark"], [1440, "light"]]) { await look(w, theme); await shoot(`maintenance-uptodate-${w}-${theme}.png`); }
 
 const status1 = (await req(ROUTE, { cookie: admin })).json?.tabs ?? [];
-t.check("after: every tab exists with every column, in order", status1.every((x) => x.exists && !x.missing.length && !x.misplaced.length && x.columns.join() === expectedColumns(x.tab).join()));
+t.check(shuffled ? "after: every tab exists with every column (in its own order)" : "after: every tab exists with every column, in order",
+  status1.every((x) => x.exists && !x.missing.length && (shuffled ? expectedColumns(x.tab).every((c) => x.columns.includes(c)) : !x.misplaced.length && x.columns.join() === expectedColumns(x.tab).join())));
 const third = await req(ROUTE, { method: "POST", cookie: admin });
 t.check("API run 3: 200 and no changes (idempotent)", third.status === 200 && third.json?.changes?.length === 0, JSON.stringify(third.json?.changes));
 const fourth = await req(ROUTE, { method: "POST", cookie: admin });

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorState from "@/components/ui/ErrorState";
 import { useToast } from "@/components/ui/Toaster";
 import { api, ApiError, AuthError, errText } from "@/lib/client/api";
 import { runOcr } from "@/lib/client/ocr";
@@ -45,7 +46,7 @@ export default function TextPanel({ book }: { book: AdminBook }) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => ctl.current?.abort(), []); // leaving the panel pauses a running OCR (it continues from there)
 
-  if (loadErr) return <p role="alert" className="err">{loadErr}</p>;
+  if (loadErr) return <ErrorState title="No se ha podido cargar el estado del texto" text={loadErr} onRetry={() => { setLoadErr(""); void load(); }} />;
   if (!st) return <div className="skeleton h-40 max-w-2xl rounded-card" aria-label="Cargando" />;
   if (!st.ready) return <p className="hint max-w-2xl">Para el texto seleccionable falta actualizar la base de datos: ve a <strong className="text-fg">Mantenimiento</strong> y pulsa «Actualizar base de datos».</p>;
 

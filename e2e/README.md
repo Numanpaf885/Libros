@@ -36,4 +36,35 @@ MOCK_MISSING_TABS=messages,settings DATA_BACKEND=mock npx next dev -p 3100   # r
 node e2e/legal-missing.mjs              # sin las pestañas nuevas: todo funciona y las secciones lo dicen
 ```
 
+## Con el adaptador real de Google contra una API de Google simulada
+
+El modo simulado normal no se parece a Google en lo que más importa cuando algo falla. `e2e/fake-sheets.mjs` es una API de Google Sheets falsa que sí lo hace:
+- una lectura que nombra una pestaña que no existe falla entera (400 «Unable to parse range»), aunque las demás existan;
+- respuestas lentas y errores 429 de cuota (forzados, o un límite de 60 lecturas por minuto como el de Google);
+- columnas en cualquier orden, más una columna desconocida.
+
+Con `FAKE_SHEETS_URL`, el servidor de pruebas usa el adaptador **real** (`lib/db/sheets.ts`) contra ella. Las imágenes siguen en `.data/blobs`.
+
+Resistencia (permanente: este tipo de fallo no debe volver):
+- pestañas que faltan, y luego «Actualizar base de datos»;
+- Google que tarda 15 s, Google que responde 429, y la recuperación;
+- `/api/health`.
+
+La prueba arranca su propia API falsa:
+
+```bash
+FAKE_SHEETS_URL=http://localhost:3999 DATA_BACKEND=mock npx next dev -p 3100
+node e2e/resilience.mjs
+```
+
+Todas las demás pruebas, con las columnas de cada pestaña desordenadas (`FAKE_SHUFFLE=1`). Las variables `MOCK_MISSING_*` de cada prueba se le pasan a la API falsa:
+
+```bash
+FAKE_SHUFFLE=1 node e2e/fake-sheets.mjs &
+FAKE_SHEETS_URL=http://localhost:3999 DATA_BACKEND=mock npx next dev -p 3100
+FAKE_SHUFFLE=1 node e2e/overflow.mjs     # y el resto
+```
+
+La API falsa lee y escribe `.data/mock-sheet.json` en el orden de columnas de la aplicación, así que las pruebas que miran ese archivo funcionan igual.
+
 `BASE` (por defecto `http://localhost:3100`) y `CHROME_PATH` se pueden cambiar con variables de entorno.

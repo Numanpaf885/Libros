@@ -41,7 +41,14 @@ const errors = [];
 {
   const c = await context(browser, { w: 390, h: 844, notice: true }); const p = await c.newPage();
   p.on("pageerror", (e) => errors.push(String(e)));
-  for (const url of ["/", `/b/${pub.slug}`]) { const r = await p.goto(BASE + url); t.check(`${url} works`, r.status() === 200); }
+  // the status from a plain request; the page itself must render. (A goto right after the previous page's
+  // hydration can return null in dev, so it is not used for the status.)
+  for (const url of ["/", `/b/${pub.slug}`]) {
+    const status = (await fetch(BASE + url)).status;
+    await p.goto(BASE + url); await p.waitForLoadState("load"); await sleep(1500);
+    const shown = await p.waitForSelector("main h1, main h2", { timeout: 15_000 }).then(() => true, () => false);
+    t.check(`${url} works`, status === 200 && shown, String(status));
+  }
   t.check("the cookie notice still shows", !!(await p.waitForSelector("[data-testid=cookie-notice]", { timeout: 10000 }).catch(() => null)));
   await p.goto(BASE + "/contacto");
   t.check("/contacto: «estará disponible muy pronto», no form", (await p.locator("main").innerText()).includes("El formulario de contacto estará disponible muy pronto.") && (await p.getByTestId("contact-form").count()) === 0);

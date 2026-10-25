@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
@@ -105,7 +106,7 @@ export default function MessagesPanel({ onUnread }: { onUnread: (n: number) => v
     if (next && m.status === "nuevo") patch(m.id, { status: "leído" }).catch((e) => toast("error", errText(e)));
   };
 
-  if (failed) return <p role="alert" className="err">{failed}</p>;
+  if (failed) return <ErrorState title="No se han podido cargar los mensajes" text={failed} onRetry={() => { setFailed(""); setVersion((v) => v + 1); }} />;
   if (data && !data.available) return <div className="card p-6"><p className="text-[17px]" data-testid="messages-missing">Actualiza la base de datos en Mantenimiento.</p><p className="hint mt-1">Los mensajes del formulario de contacto necesitan la pestaña «messages» en la hoja de cálculo.</p></div>;
 
   return (

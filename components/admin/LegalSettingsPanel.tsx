@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import ErrorState from "@/components/ui/ErrorState";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
@@ -15,6 +16,7 @@ export default function LegalSettingsPanel({ onSaved }: { onSaved: (complete: bo
   const [form, setForm] = useState({ owner: "", email: "", city: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let dead = false;
@@ -24,7 +26,7 @@ export default function LegalSettingsPanel({ onSaved }: { onSaved: (complete: bo
       if (r.legal) setForm({ owner: r.legal.owner, email: r.legal.email, city: r.legal.city });
     }).catch((e) => { if (!dead) setErr(errText(e)); });
     return () => { dead = true; };
-  }, []);
+  }, [attempt]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -38,7 +40,7 @@ export default function LegalSettingsPanel({ onSaved }: { onSaved: (complete: bo
     setBusy(false);
   }
 
-  if (!res) return err ? <p role="alert" className="err">{err}</p> : <div className="skeleton h-64 rounded-card" aria-label="Cargando" />;
+  if (!res) return err ? <ErrorState title="No se han podido cargar los datos legales" text={err} onRetry={() => { setErr(""); setAttempt((a) => a + 1); }} /> : <div className="skeleton h-64 rounded-card" aria-label="Cargando" />;
   if (!res.available) return <div className="card p-6"><p className="text-[17px]" data-testid="legal-missing">Actualiza la base de datos en Mantenimiento.</p><p className="hint mt-1">Los datos legales se guardan en la pestaña «settings» de la hoja de cálculo.</p></div>;
   const updated = fmt(res.legal?.updated ?? "");
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));

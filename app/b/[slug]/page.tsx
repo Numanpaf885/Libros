@@ -3,11 +3,12 @@ import BookClient from "@/components/book/BookClient";
 import { readerHasText } from "@/lib/book-text";
 import { getBookBySlug } from "@/lib/db/repo";
 import { SITE_CONTACT, SITE_NAME } from "@/lib/site";
+import { softly } from "@/lib/soft";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
-  const b = await getBookBySlug((await params).slug);
+  const b = await softly(getBookBySlug((await params).slug), null); // the page itself reports the problem
   return { title: b && b.status === "published" ? b.title : "Libro", robots: { index: false, follow: false } };
 }
 

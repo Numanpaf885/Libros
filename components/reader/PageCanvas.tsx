@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Icon from "@/components/ui/Icon";
 import { drawPage, loadPage, Unauthorized } from "@/lib/client/pages";
 import TextLayer from "./TextLayer";
 
@@ -23,6 +24,7 @@ export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio,
   const canvas = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0); // "Reintentar" loads the page again
 
   useEffect(() => {
     let dead = false;
@@ -42,12 +44,17 @@ export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio,
         });
     }, delay);
     return () => { dead = true; clearTimeout(t); };
-  }, [slug, n, delay, onRatio, onExpired]);
+  }, [slug, n, delay, onRatio, onExpired, attempt]);
 
   return (
     <div data-page={n} className={`relative overflow-hidden rounded-[3px] border border-line ${loaded ? "bg-white" : "skeleton"}`} style={{ width, height }}>
       {marked && <span className="bm-ribbon" data-testid="bookmark-ribbon" aria-hidden="true" />}
-      {failed && <p className="absolute inset-0 grid place-items-center p-4 text-center text-sm text-muted">No se ha podido cargar esta página.</p>}
+      {failed && (
+        <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-3 p-4 text-center" data-testid="page-failed">
+          <p className="text-sm text-muted">No se ha podido cargar esta página.</p>
+          <button type="button" className="btn btn-sm" onClick={() => { setFailed(false); setAttempt((a) => a + 1); }}><Icon name="rotate" size={16} />Reintentar</button>
+        </div>
+      )}
       <canvas ref={canvas} aria-label={`Página ${n}`} className={`block h-full w-full transition-opacity duration-150 ${loaded ? "opacity-100" : "opacity-0"}`} />
       {/* inside the 1 px border, like the canvas */}
       {text && loaded && <TextLayer slug={slug} n={n} width={width - 2} ratio={(height - 2) / (width - 2)} />}

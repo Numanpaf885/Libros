@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
+import ErrorState from "@/components/ui/ErrorState";
+import SystemStatus from "./SystemStatus";
 import Icon from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toaster";
 import { api, errText } from "@/lib/client/api";
@@ -11,7 +13,6 @@ const name = "rounded-[4px] bg-fg/[0.06] px-1.5 py-0.5 font-mono text-[13px] [ov
 function chipOf(t: TabStatus): [string, string] {
   if (!t.exists) return ["chip border-danger text-danger", "Falta la pestaña"];
   if (t.missing.length) return ["chip border-danger text-danger", t.missing.length === 1 ? "Falta 1 columna" : `Faltan ${t.missing.length} columnas`];
-  if (t.misplaced.length) return ["chip chip-draft", "Revisar orden"];
   return ["chip chip-ok", "Al día"];
 }
 /** Changes still to make: one per missing tab and one per missing column of an existing tab. */
@@ -63,7 +64,7 @@ function StatusTable({ tabs }: { tabs: TabStatus[] }) {
                   <span className="text-muted">{t.exists ? "Sin encabezados" : "La pestaña no existe todavía"}</span>
                 )}
                 {t.misplaced.length > 0 && (
-                  <p className="mt-2 text-sm text-muted">No están donde la aplicación las busca: {t.misplaced.join(", ")}. Este botón no mueve columnas: revísalo a mano en la hoja.</p>
+                  <p className="mt-2 text-sm text-muted" data-testid="maintenance-order-note">Columnas en otro orden: no pasa nada, la aplicación las busca por su nombre.</p>
                 )}
               </div>
               <div role="cell" className="mt-3 min-w-0 md:mt-0" data-col="missing">
@@ -89,6 +90,8 @@ export default function MaintenancePanel({ onChanged }: { onChanged?: () => void
   const toast = useToast();
   const [tabs, setTabs] = useState<TabStatus[] | null>(null);
   const [loadErr, setLoadErr] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [checked, setChecked] = useState(0); // "Estado del sistema" checks again after an update
   const [busy, setBusy] = useState(false);
   const [changes, setChanges] = useState<Change[] | null>(null);
   const [err, setErr] = useState("");
@@ -96,10 +99,10 @@ export default function MaintenancePanel({ onChanged }: { onChanged?: () => void
   useEffect(() => {
     let dead = false;
     api<{ tabs: TabStatus[] }>("/api/admin/maintenance")
-      .then((r) => { if (!dead) setTabs(r.tabs); })
+      .then((r) => { if (!dead) { setTabs(r.tabs); setLoadErr(""); } })
       .catch((e) => { if (!dead) setLoadErr(errText(e)); });
     return () => { dead = true; };
-  }, []);
+  }, [attempt]);
 
   const run = async () => {
     setBusy(true); setErr("");
@@ -107,7 +110,7 @@ export default function MaintenancePanel({ onChanged }: { onChanged?: () => void
       const r = await api<{ changes: Change[]; tabs: TabStatus[] }>("/api/admin/maintenance", "POST", {});
       setChanges(r.changes); setTabs(r.tabs); setLoadErr("");
       toast("ok", r.changes.length ? "Base de datos actualizada" : "Todo al día");
-      if (r.changes.length) onChanged?.();
+      if (r.changes.length) { onChanged?.(); setChecked((v) => v + 1); }
     } catch (e) {
       setErr(errText(e)); toast("error", errText(e));
     }
@@ -117,6 +120,7 @@ export default function MaintenancePanel({ onChanged }: { onChanged?: () => void
 
   return (
     <div className="space-y-8">
+      <SystemStatus version={checked} />
       <section aria-labelledby="maint-update" className="card space-y-5 p-5 sm:p-7">
         <div>
           <h2 id="maint-update" className="text-2xl">Base de datos</h2>
@@ -138,7 +142,7 @@ export default function MaintenancePanel({ onChanged }: { onChanged?: () => void
           <h2 id="maint-status" className="text-2xl">Estado</h2>
           <p className="hint mt-1">Lo que tiene ahora cada pestaña de la hoja y lo que le falta. Solo lectura.</p>
         </div>
-        {loadErr ? <p role="alert" className="err">{loadErr}</p>
+        {loadErr ? <ErrorState title="No se ha podido leer la hoja de cálculo" text={loadErr} onRetry={() => { setLoadErr(""); setAttempt((a) => a + 1); }} />
           : tabs ? <StatusTable tabs={tabs} />
           : <div className="space-y-3" aria-label="Cargando"><div className="skeleton h-16 rounded-card" /><div className="skeleton h-16 rounded-card" /><div className="skeleton h-16 rounded-card" /></div>}
       </section>

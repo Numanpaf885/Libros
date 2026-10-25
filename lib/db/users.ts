@@ -1,23 +1,27 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { isMock, PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
+import { PROGRESS_WRITE_GAP_MS, USERS_CACHE_MS } from "../config";
 import { assertSafeConfig } from "../safety";
 import { ALL_BOOKS, type BookmarkRecord, type DownloadRecord, type DownloadStatus, type MessageRecord, type MessageStatus, type PasskeyRecord, type ProgressRecord, type UserBookRecord, type UserRecord } from "../types";
+import { mockTableOn } from "./backend";
 import { mockTable } from "./mock";
 import { sheetsTable } from "./sheets";
 import { TABS as SHEET_TABS, type Table } from "./table";
 
 const table = (): Table => {
   assertSafeConfig();
-  return isMock() ? mockTable : sheetsTable;
+  return mockTableOn() ? mockTable : sheetsTable;
 };
 
 const TABS = ["users", "user_books", "progress", "passkeys"] as const;
-/** Bookmarks live in a tab that may not exist yet (it is added by `npm run setup-sheet`): everything below copes with that. */
-const BM_RETRY_MS = 5 * 60_000;
-/** Same idea for the `downloads` tab (also added by `npm run setup-sheet`). */
-const DL_RETRY_MS = 5 * 60_000;
+/**
+ * Tabs added after the first version: a sheet may not have them yet ("Actualizar base de datos" creates them). They are
+ * read in the same request when they exist; when one is missing its feature stays hidden (the admin says so).
+ */
+const OPTIONAL_TABS = ["bookmarks", "downloads", "messages", "settings"] as const;
 const BOOKMARK_GAP_MS = 2_000;
+/** After a failed refresh, the last good snapshot is used and the sheet is asked again after this long. */
+const STALE_RETRY_MS = 15_000;
 
 // ---- row <-> object ----
 const num = (v: string | undefined, d = 0) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -93,106 +97,74 @@ interface Store {
   bmPending: Map<string, BmQueue>;
   bmWritten: Map<string, number>;
   bmDraining: Promise<void> | null;
-  /** don't ask for the bookmarks tab again before this time (it was missing) */
-  bmMissingUntil: number;
-  bmWarned: boolean;
   /** download rows this instance wrote recently (id -> latest state), re-applied over fresh reads for a few minutes */
   dlLocal: Map<string, DownloadRecord>;
-  dlMissingUntil: number;
-  dlWarned: boolean;
-  /** the same for the tabs added later still (messages, settings): don't ask again before this time */
-  missingUntil: Record<string, number>;
+  /** a refresh failed: keep using the last good snapshot until this time */
+  retryAt: number;
+  /** optional tabs already reported missing in the logs (once each) */
   warned: Set<string>;
 }
 const g = globalThis as unknown as { __usersStore?: Store };
-const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, bmMissingUntil: 0, bmWarned: false, dlLocal: new Map(), dlMissingUntil: 0, dlWarned: false, missingUntil: {} as Record<string, number>, warned: new Set<string>() } as Store);
-store.missingUntil ??= {}; // a store made by an older version of this module (dev reloads)
-store.warned ??= new Set();
-/** Tabs added after bookmarks and downloads, optional in the same way. */
-const LATER_TABS = ["messages", "settings"] as const;
-const LATER_RETRY_MS = 5 * 60_000;
+const store = (g.__usersStore ??= { snap: null, loading: null, pending: new Map(), written: new Map(), draining: null, bmPending: new Map(), bmWritten: new Map(), bmDraining: null, dlLocal: new Map(), retryAt: 0, warned: new Set<string>() });
+store.warned ??= new Set(); // a store made by an older version of this module (dev reloads)
+store.retryAt ??= 0;
 const pkey = (userId: string, bookId: string) => `${userId}:${bookId}`;
 
-/**
- * After "Actualizar base de datos": read the tabs again on the next request, and look for the optional tabs at once
- * instead of waiting out their retry delay. Like the snapshot expiring: writes still waiting are re-applied on the read.
- */
+/** After "Actualizar base de datos": read the tabs again on the next request. Writes still waiting are re-applied on the read. */
 export function forgetSnapshot() {
   store.snap = null;
-  store.bmMissingUntil = 0;
-  store.dlMissingUntil = 0;
-  store.missingUntil = {};
+  store.retryAt = 0;
 }
 
-async function snapshot(): Promise<Snap> {
-  if (store.snap && Date.now() - store.snap.at < USERS_CACHE_MS) return store.snap;
-  store.loading ??= (async () => {
-    try {
-      // One batchGet. If an optional tab (bookmarks, downloads) is not there (Google answers 400), read the old tabs as
-      // before, try each optional tab on its own and remember not to ask again for a few minutes: nothing else may ever
-      // break because of a new tab.
-      const wantBm = Date.now() >= store.bmMissingUntil;
-      const wantDl = Date.now() >= store.dlMissingUntil;
-      const later = LATER_TABS.filter((t) => Date.now() >= (store.missingUntil[t] ?? 0));
-      const optional = [...(wantBm ? ["bookmarks"] : []), ...(wantDl ? ["downloads"] : []), ...later];
-      let d: Record<string, string[][]>;
-      let bookmarksOk = wantBm;
-      let downloadsOk = wantDl;
-      const laterOk = new Set<string>(later);
-      try {
-        d = await table().listMany([...TABS, ...optional]);
-      } catch (e) {
-        if (!optional.length) throw e;
-        d = await table().listMany([...TABS]);
-        bookmarksOk = false;
-        downloadsOk = false;
-        laterOk.clear();
-        for (const tab of optional) {
-          try {
-            d[tab] = (await table().listMany([tab]))[tab];
-            if (tab === "bookmarks") bookmarksOk = true; else if (tab === "downloads") downloadsOk = true; else laterOk.add(tab);
-          } catch {
-            if (tab === "bookmarks") {
-              store.bmMissingUntil = Date.now() + BM_RETRY_MS;
-              if (!store.bmWarned) { store.bmWarned = true; console.warn("[bookmarks] the `bookmarks` tab is missing: run `npm run setup-sheet`. Bookmarks stay on the reader's device until then."); }
-            } else if (tab === "downloads") {
-              store.dlMissingUntil = Date.now() + DL_RETRY_MS;
-              if (!store.dlWarned) { store.dlWarned = true; console.warn("[downloads] the `downloads` tab is missing: run `npm run setup-sheet`. The download features stay hidden until then."); }
-            } else {
-              store.missingUntil[tab] = Date.now() + LATER_RETRY_MS;
-              if (!store.warned.has(tab)) { store.warned.add(tab); console.warn(`[${tab}] the \`${tab}\` tab is missing: /admin → Mantenimiento → «Actualizar base de datos». That feature stays hidden until then.`); }
-            }
-          }
-        }
-      }
-      const snap: Snap = {
-        at: Date.now(),
-        users: d.users.filter((r) => r[0]).map(toUser),
-        userBooks: d.user_books.filter((r) => r[0] && r[1]).map(toUserBook),
-        progress: d.progress.filter((r) => r[0] && r[1]).map(toProgress),
-        passkeys: d.passkeys.filter((r) => r[0]).map(toPasskey),
-        bookmarks: bookmarksOk ? (d.bookmarks ?? []).filter((r) => r[0] && r[1]).map(toBookmark) : [],
-        bookmarksOk,
-        downloads: downloadsOk ? (d.downloads ?? []).filter((r) => r[0]).map(toDownload) : [],
-        downloadsOk,
-        messages: laterOk.has("messages") ? (d.messages ?? []).filter((r) => r[0]).map(toMessage) : [],
-        messagesOk: laterOk.has("messages"),
-        settings: new Map(laterOk.has("settings") ? (d.settings ?? []).filter((r) => r[0]).map((r) => [r[0], r[1] ?? ""] as [string, string]) : []),
-        settingsOk: laterOk.has("settings"),
-      };
-      // Rows written by this instance that the sheet read does not show yet (or finished rows it still shows as started).
-      for (const rec of store.dlLocal.values()) upsertLocalDownload(snap, rec);
-      for (const [uid, q] of store.bmPending) applyQueueToList(snap, uid, q);
-      // Progress that is still waiting to be written is newer than the sheet.
-      for (const p of store.pending.values()) upsertLocalProgress(snap, p);
-      store.snap = snap;
-      return snap;
-    } finally {
-      store.loading = null;
-    }
-  })();
-  return store.loading;
+async function loadSnapshot(): Promise<Snap> {
+  // ONE request for every tab that exists (the adapter never asks for a missing tab: Google would fail them all).
+  const d = await table().listMany([...TABS, ...OPTIONAL_TABS]);
+  for (const tab of OPTIONAL_TABS) {
+    if (!(tab in d) && !store.warned.has(tab)) { store.warned.add(tab); console.warn(`[${tab}] the \`${tab}\` tab is missing: /admin → Mantenimiento → «Actualizar base de datos». That feature stays hidden until then.`); }
+  }
+  const rows = (tab: string) => d[tab] ?? [];
+  const snap: Snap = {
+    at: Date.now(),
+    users: rows("users").filter((r) => r[0]).map(toUser),
+    userBooks: rows("user_books").filter((r) => r[0] && r[1]).map(toUserBook),
+    progress: rows("progress").filter((r) => r[0] && r[1]).map(toProgress),
+    passkeys: rows("passkeys").filter((r) => r[0]).map(toPasskey),
+    bookmarks: rows("bookmarks").filter((r) => r[0] && r[1]).map(toBookmark),
+    bookmarksOk: "bookmarks" in d,
+    downloads: rows("downloads").filter((r) => r[0]).map(toDownload),
+    downloadsOk: "downloads" in d,
+    messages: rows("messages").filter((r) => r[0]).map(toMessage),
+    messagesOk: "messages" in d,
+    settings: new Map(rows("settings").filter((r) => r[0]).map((r) => [r[0], r[1] ?? ""] as [string, string])),
+    settingsOk: "settings" in d,
+  };
+  // Rows written by this instance that the sheet read does not show yet (or finished rows it still shows as started).
+  for (const rec of store.dlLocal.values()) upsertLocalDownload(snap, rec);
+  for (const [uid, q] of store.bmPending) applyQueueToList(snap, uid, q);
+  // Progress that is still waiting to be written is newer than the sheet.
+  for (const p of store.pending.values()) upsertLocalProgress(snap, p);
+  return snap;
 }
+/**
+ * The users / user_books / progress / passkeys (+ optional tabs) snapshot, reused for USERS_CACHE_MS. When a refresh
+ * fails (Google slow, over quota, down) the last good snapshot keeps being used and the sheet is asked again a little
+ * later, so signed-in readers keep reading. Only without any snapshot does the error reach the page.
+ */
+async function snapshot(): Promise<Snap> {
+  const have = store.snap;
+  if (have && (Date.now() - have.at < USERS_CACHE_MS || Date.now() < store.retryAt)) return have;
+  store.loading ??= loadSnapshot().then((s) => { store.snap = s; store.retryAt = 0; return s; }).finally(() => { store.loading = null; });
+  try {
+    return await store.loading;
+  } catch (e) {
+    if (!have) throw e;
+    store.retryAt = Date.now() + STALE_RETRY_MS;
+    console.warn(`[users] refresh failed, using the copy from ${Math.round((Date.now() - have.at) / 1000)} s ago:`, (e as Error).message);
+    return have;
+  }
+}
+/** Whether the snapshot (if any) is older than its normal life because the sheet could not be read (for /api/health). */
+export const snapshotAge = () => (store.snap ? Date.now() - store.snap.at : null);
 /** Re-apply bookmark changes that are still waiting to be written on top of freshly read rows. */
 function applyQueueToList(s: Snap, userId: string, q: BmQueue) {
   s.bookmarks = s.bookmarks.filter((b) => !(b.user_id === userId && (q.remove.has(b.id) || q.add.has(b.id)))).concat([...q.add.values()]);
@@ -630,6 +602,19 @@ export async function settingsAvailable(): Promise<boolean> {
 /** Every setting (an empty object when the tab does not exist yet). */
 export async function getSettings(): Promise<Record<string, string>> {
   return Object.fromEntries((await snapshot()).settings);
+}
+/**
+ * Settings for pages that must never wait on the sheet (the legal pages): the last copy at once (refreshed in the
+ * background when old) or, before any copy exists, whatever arrives within `waitMs`; otherwise nothing. Never throws.
+ */
+export async function settingsNow(waitMs = 1_500): Promise<Record<string, string>> {
+  const have = store.snap;
+  if (have) {
+    if (Date.now() - have.at >= USERS_CACHE_MS) void snapshot().catch(() => {});
+    return Object.fromEntries(have.settings);
+  }
+  const s = await Promise.race([snapshot().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), waitMs))]);
+  return s ? Object.fromEntries(s.settings) : {};
 }
 /** Inserts or replaces these keys: one read and at most two writes. */
 export async function saveSettings(values: Record<string, string>): Promise<void> {
