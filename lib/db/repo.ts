@@ -19,11 +19,16 @@ const table = (): Table => {
 // last good rows keep being used for a while, so the catalogue and the reader keep working.
 const STALE_RETRY_MS = 15_000;
 type Entry = { at: number; rows: string[][]; retryAt?: number };
-const cache = (globalThis as unknown as { __readCache?: Map<string, Entry> });
+// On globalThis, like the cache itself, so every copy of this module (dev can load it twice) sees the same state.
+const cache = globalThis as unknown as {
+  __readCache?: Map<string, Entry>;
+  __readLoading?: Map<string, Promise<string[][]>>;
+  /** Bumped by every local write: a read that started before it must not put the old rows back in the cache. */
+  __readGeneration?: Map<string, number>;
+};
 cache.__readCache ??= new Map();
-const loading = new Map<string, Promise<string[][]>>();
-/** Bumped by every local write: a read that started before it must not put the old rows back in the cache. */
-const generation = new Map<string, number>();
+const loading = (cache.__readLoading ??= new Map());
+const generation = (cache.__readGeneration ??= new Map());
 async function cached(tab: string): Promise<string[][]> {
   const m = cache.__readCache!;
   const hit = m.get(tab);
