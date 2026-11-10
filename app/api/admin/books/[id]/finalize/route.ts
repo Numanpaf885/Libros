@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseChapters, stringifyChapters } from "@/lib/chapters";
 import { isReplacement, replacementTarget, toAdminBook, verifyUpload } from "@/lib/books";
 import { deleteBookRow, getBookById, saveBook } from "@/lib/db/repo";
 import { guardAdmin, jsonError, ok, parseBody, safe } from "@/lib/http";
@@ -36,6 +37,8 @@ export const POST = safe(async (req: Request, { params }: { params: Promise<{ id
     // the text stored with the new pages (if any) replaces the old one, which goes with the old prefix
     text_status: book.text_status,
     text_pages: book.text_pages,
+    // chapters stay where they still fit (the new PDF's bookmarks, if it has any, replace them right after the upload)
+    chapters: stringifyChapters(parseChapters(original.chapters, book.page_count)),
   });
   await deleteBookRow(book.id); // temp row only; its pages now belong to the original
   await storage().deletePrefix(oldPrefix);

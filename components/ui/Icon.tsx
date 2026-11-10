@@ -37,6 +37,9 @@ const P = {
   image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9.5h.01",
   more: "M4.5 12a1 1 0 102 0 1 1 0 10-2 0M11 12a1 1 0 102 0 1 1 0 10-2 0M17.5 12a1 1 0 102 0 1 1 0 10-2 0",
   textCursor: "M9 4.5c1.5 0 3 .5 3 2v11c0 1.5-1.5 2-3 2M15 4.5c-1.5 0-3 .5-3 2M15 19.5c-1.5 0-3-.5-3-2M10 12h4",
+  plus: "M12 5v14M5 12h14",
+  search: "M10.5 4.5a6 6 0 100 12 6 6 0 100-12M15 15l5 5",
+  chapters: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
 } as const;
 export type IconName = keyof typeof P;
 export default function Icon({ name, size = 20, className = "", filled = false }: { name: IconName; size?: number; className?: string; filled?: boolean }) {

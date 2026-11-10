@@ -1,4 +1,5 @@
 "use client";
+import { MAX_CHAPTERS, normalizeChapters, type Chapter } from "@/lib/chapters";
 import { itemsFromRuns, runsFromPdf, type TextItem } from "@/lib/text-layer";
 
 const MAX_W = 1400;
@@ -87,11 +88,51 @@ async function openDocument(src: Source) {
   return { doc, task, guard };
 }
 
-/** Page count and printed page labels (as the PDF stores them: one string per page, or null) without rendering anything. */
-export async function readPdfMeta(file: File): Promise<{ pageCount: number; labels: string[] | null }> {
+type Doc = Awaited<ReturnType<typeof openDocument>>["doc"];
+interface OutlineItem { title?: string; dest?: unknown; items?: OutlineItem[] }
+/** The page (1-based) an outline entry points to; an entry without a destination goes where its first sub-entry goes. */
+async function outlinePage(doc: Doc, it: OutlineItem): Promise<number | null> {
+  let d = it.dest;
+  if (typeof d === "string") d = await doc.getDestination(d);
+  if (Array.isArray(d) && d[0] !== undefined && d[0] !== null) {
+    const ref = d[0] as unknown;
+    if (typeof ref === "number") return ref + 1; // some PDFs point at a page index
+    return (await doc.getPageIndex(ref as Parameters<Doc["getPageIndex"]>[0])) + 1;
+  }
+  return it.items?.length ? outlinePage(doc, it.items[0]) : null;
+}
+/**
+ * The PDF's bookmarks (outline) as chapters: its top-level entries, or the entries under a single top entry that holds
+ * them all (often the book's title). [] when it has none.
+ */
+async function outlineChapters(doc: Doc): Promise<Chapter[]> {
+  const outline = ((await doc.getOutline().catch(() => null)) ?? []) as OutlineItem[];
+  const top = outline.length === 1 && outline[0].items?.length ? outline[0].items : outline;
+  const out: Chapter[] = [];
+  for (const it of top.slice(0, MAX_CHAPTERS)) {
+    const p = await outlinePage(doc, it).catch(() => null);
+    if (p && it.title?.trim()) out.push({ t: it.title, p });
+  }
+  return normalizeChapters(out, doc.numPages);
+}
+
+/**
+ * Page count, printed page labels (as the PDF stores them: one string per page, or null) and the chapters of its
+ * bookmarks, without rendering anything.
+ */
+export async function readPdfMeta(file: File): Promise<{ pageCount: number; labels: string[] | null; chapters: Chapter[] }> {
   const { doc, task } = await openDocument(fileSource(file));
   try {
-    return { pageCount: doc.numPages, labels: await doc.getPageLabels() };
+    return { pageCount: doc.numPages, labels: await doc.getPageLabels(), chapters: await outlineChapters(doc) };
+  } finally {
+    await task.destroy();
+  }
+}
+/** The chapters of the stored original's bookmarks (read with Range requests) and its page count. */
+export async function readPdfChaptersUrl(size: number, getUrl: () => Promise<string>): Promise<{ pageCount: number; chapters: Chapter[] }> {
+  const { doc, task } = await openDocument(urlSource(size, getUrl));
+  try {
+    return { pageCount: doc.numPages, chapters: await outlineChapters(doc) };
   } finally {
     await task.destroy();
   }

@@ -15,15 +15,20 @@ export interface MethodInput {
   /** average size in bytes of one page image (0 = unknown) */
   avgPageBytes: number;
   device: Device;
+  /** some page of the range has text recognised by OCR, which the original PDF does not have: it cannot be sent as is */
+  ocr?: boolean;
 }
 export interface MethodChoice { method: DownloadMethod; estimate: number }
 
-/** "original" = the whole original is sent; "recorte" = pages cut from it in the browser; "imagenes" = built from page images. */
+/**
+ * "original" = the whole original is sent; "recorte" = pages cut from it in the browser (recognised text is added
+ * there); "imagenes" = built from page images (with their text).
+ */
 export function chooseMethod(i: MethodInput): MethodChoice {
   const pages = Math.max(0, i.to - i.from + 1);
   const images = { method: "imagenes" as const, estimate: Math.round(pages * i.avgPageBytes) };
   if (i.originalSize <= 0) return images;
-  if (i.from === 1 && i.to === i.pageCount) return { method: "original", estimate: i.originalSize };
+  if (i.from === 1 && i.to === i.pageCount && !i.ocr) return { method: "original", estimate: i.originalSize };
   const smaller = i.avgPageBytes <= 0 || i.originalSize < images.estimate;
   if (smaller && i.originalSize <= MAX_CUT_BYTES[i.device]) return { method: "recorte", estimate: i.originalSize };
   return images;

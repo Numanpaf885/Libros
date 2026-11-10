@@ -1,6 +1,8 @@
 // Builds a PDF of a page range in the browser: fetch each page (4 at a time), draw it on a canvas, export a JPEG and feed
-// the streaming writer. Memory stays small: only a few pages are in flight and each page's bitmap and canvas are released
-// as soon as its JPEG exists.
+// the streaming writer, with the page's text as an invisible layer when there is one. Memory stays small: only a few
+// pages are in flight and each page's bitmap and canvas are released as soon as its JPEG exists.
+import type { TextItem } from "@/lib/text-layer";
+import { placeItems, textStream } from "./pdf-text";
 import { PdfWriter } from "./pdf-writer";
 
 export const PARALLEL = 4;
@@ -15,6 +17,8 @@ export interface BuildOptions {
   signal: AbortSignal;
   /** called after each page is written: (pages done, total) */
   onProgress: (done: number, total: number) => void;
+  /** the text of a page (fractions of the page), written invisibly over its image; null when it has none */
+  textOf?: (page: number) => Promise<TextItem[] | null>;
 }
 
 /** Hands out page URLs: 20 at a time (aligned to the first page of the range), one request per batch. */
@@ -86,9 +90,11 @@ export async function buildPdf(o: BuildOptions): Promise<Blob> {
   const total = o.to - o.from + 1;
   const book = new UrlBook(o.urls, o.from, o.to);
   const writer = new PdfWriter();
-  const inflight = new Map<number, Promise<{ jpeg: Blob; w: number; h: number }>>();
+  const inflight = new Map<number, Promise<{ jpeg: Blob; w: number; h: number; text: TextItem[] | null }>>();
   const launch = (page: number) => {
-    const p = pageToJpeg(book, page, o.signal);
+    // the page's text comes with it; a page whose text cannot be read is written without it
+    const text = o.textOf ? o.textOf(page).catch(() => null) : Promise.resolve(null);
+    const p = Promise.all([pageToJpeg(book, page, o.signal), text]).then(([img, t]) => ({ ...img, text: t }));
     p.catch(() => {}); // a failure is reported when its turn comes
     inflight.set(page, p);
   };
@@ -98,7 +104,8 @@ export async function buildPdf(o: BuildOptions): Promise<Blob> {
     for (let k = page; k < page + PARALLEL && k <= o.to; k++) if (!inflight.has(k)) launch(k);
     const r = await inflight.get(page)!;
     inflight.delete(page);
-    writer.addJpeg(r.jpeg, r.w, r.h);
+    const text = r.text?.length ? textStream(placeItems(r.text, { x0: 0, y0: 0, x1: r.w, y1: r.h, rotate: 0 }), "F1") : "";
+    writer.addJpeg(r.jpeg, r.w, r.h, text);
     o.onProgress(page - o.from + 1, total);
   }
   o.signal.throwIfAborted();

@@ -9,9 +9,12 @@ import { loadPage, Unauthorized } from "@/lib/client/pages";
 import { realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
 import BookMode, { type BookHandle, type PageEffect } from "./BookMode";
 import BookmarksPanel from "./BookmarksPanel";
+import ChaptersList from "./ChaptersList";
+import SearchPanel, { useBookSearch } from "./SearchPanel";
 import DownloadDialog from "@/components/download/DownloadDialog";
 import { flushBook, reportPage } from "@/lib/client/progress-sync";
 import { inTextLayer, selectedText } from "@/lib/client/text";
+import type { Chapter } from "@/lib/chapters";
 import { hasLabels, labelOf, labelSpan, labelTotal, pageFromInput, type LabelRange } from "@/lib/page-labels";
 import ModeSwitch, { type ReadMode } from "./ModeSwitch";
 import OpeningBook from "./OpeningBook";
@@ -31,6 +34,10 @@ interface Props {
   labels?: LabelRange[];
   /** the pages have selectable text (and the admin allows copying); without it the reader is exactly as before */
   text?: boolean;
+  /** the book's chapters (a list to jump to, and one can be downloaded); none = no chapter list */
+  chapters?: Chapter[];
+  /** the book's text can be searched ("Buscar en el libro") */
+  search?: boolean;
   onClose: () => void;
   onExpired: () => void;
 }
@@ -61,7 +68,8 @@ function initialMode(): ReadMode {
 }
 
 const NO_LABELS: LabelRange[] = [];
-export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, labels = NO_LABELS, text = false, onClose, onExpired }: Props) {
+const NO_CHAPTERS: Chapter[] = [];
+export default function Viewer({ slug, title, pageCount, initialPage, offer: offerIn, canDownload = false, labels = NO_LABELS, text = false, chapters = NO_CHAPTERS, search = false, onClose, onExpired }: Props) {
   const lsKey = `br:last:${slug}`;
   const [mode, setModeState] = useState<ReadMode>(initialMode);
   const [reduced] = useState(reducedMotion);
@@ -88,8 +96,19 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
   const toast = useToast();
   const phoneUi = usePhone(767);
   const bm = useBookmarks(slug, pageCount);
-  const [bmOpen, setBmOpen] = useState(false);
+  const [bmOpen, setBmOpenState] = useState(false);
+  const [chOpen, setChOpen] = useState(false); // the chapter list
+  const [srOpen, setSrOpen] = useState(false); // "Buscar en el libro"
+  const sr = useBookSearch(slug);
   const [dlOpen, setDlOpen] = useState(false);
+  // one side panel (or phone sheet) at a time
+  const setBmOpen = (v: boolean | ((x: boolean) => boolean)) => {
+    const next = typeof v === "function" ? v(bmOpen) : v;
+    setBmOpenState(next);
+    if (next) { setChOpen(false); setSrOpen(false); }
+  };
+  const openChapters = () => { setBmOpenState(false); setSrOpen(false); setChOpen((v) => !v); setMenu(false); };
+  const openSearch = () => { setBmOpenState(false); setChOpen(false); setSrOpen(true); setMenu(false); };
   const root = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLDivElement>(null);
   const renders = useRef(0);
@@ -278,6 +297,10 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     if (id) toast("ok", "Marcador añadido", { label: "Deshacer", onClick: () => bm.remove(id) });
   };
   const jumpTo = (n: number) => { goTo(n); if (phoneUi) setBmOpen(false); };
+  // a chapter or a search result: on phones the sheet closes so the page shows (with its matches highlighted)
+  const jumpChapter = (n: number) => { goTo(n); if (phoneUi) setChOpen(false); };
+  const jumpResult = (n: number) => { goTo(n); if (phoneUi) setSrOpen(false); };
+  const closeSearch = () => { setSrOpen(false); sr.clear(); };
 
   // first placement once geometry is known
   useLayoutEffect(() => {
@@ -330,6 +353,8 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ["s", "p"].includes(e.key.toLowerCase())) { e.preventDefault(); return; }
       if (dlOpen) return; // the download dialog is open: keys belong to it
+      // Ctrl/Cmd+F searches the whole book (the browser's own find only sees the pages on screen)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && search) { e.preventDefault(); openSearch(); setTimeout(() => document.getElementById("buscar-libro")?.focus(), 0); return; }
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.getAttribute("role") === "radio")) return;
       if (e.key === "ArrowRight" || (!pdf && e.key === "PageDown")) { e.preventDefault(); turn(1); }
@@ -424,6 +449,16 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
             </div>
           )}
         </div>
+      ))}
+      {search && (inMenu ? (
+        <button type="button" className="flex min-h-11 w-full items-center gap-3 rounded-ctl px-3 text-left text-[15px] hover:bg-fg/10" onClick={openSearch} data-testid="search-open"><Icon name="search" size={18} />Buscar en el libro</button>
+      ) : (
+        <button type="button" className={`${tb} ${srOpen ? "bg-fg/10!" : ""}`} onClick={() => (srOpen ? closeSearch() : openSearch())} aria-expanded={srOpen} aria-label="Buscar en el libro" title="Buscar en el libro (Ctrl+F)" data-testid="search-open"><Icon name="search" /></button>
+      ))}
+      {chapters.length > 0 && (inMenu ? (
+        <button type="button" className="flex min-h-11 w-full items-center gap-3 rounded-ctl px-3 text-left text-[15px] hover:bg-fg/10" onClick={openChapters} data-testid="chapters-open"><Icon name="chapters" size={18} />Capítulos</button>
+      ) : (
+        <button type="button" className={`${tb} ${chOpen ? "bg-fg/10!" : ""}`} onClick={openChapters} aria-expanded={chOpen} aria-label="Capítulos" title="Capítulos" data-testid="chapters-open"><Icon name="chapters" /></button>
       ))}
       {canDownload && (inMenu ? (
         <button type="button" className="flex min-h-11 w-full items-center gap-3 rounded-ctl px-3 text-left text-[15px] hover:bg-fg/10" onClick={() => { setMenu(false); setDlOpen(true); }} data-testid="download-open"><Icon name="download" size={18} />Descargar PDF</button>
@@ -541,6 +576,25 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
           </aside>
         )}
 
+        {chOpen && !phoneUi && (
+          <aside aria-label="Capítulos" className="fade-in absolute inset-y-0 right-0 z-20 flex w-80 max-w-full flex-col border-l border-line bg-bg shadow-[var(--shadow-float)]" data-testid="chapters-panel">
+            <div className="flex items-center justify-between border-b border-line px-4 py-2">
+              <h2 className="font-serif text-xl font-semibold">Capítulos</h2>
+              <button type="button" className={tb} onClick={() => setChOpen(false)} aria-label="Cerrar capítulos"><Icon name="close" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto"><ChaptersList chapters={chapters} pageCount={pageCount} current={pdf ? page : (visible[0] ?? page)} onJump={jumpChapter} nameOf={printed ? name : undefined} /></div>
+          </aside>
+        )}
+        {srOpen && !phoneUi && (
+          <aside aria-label="Buscar en el libro" className="fade-in absolute inset-y-0 right-0 z-20 flex w-80 max-w-full flex-col border-l border-line bg-bg shadow-[var(--shadow-float)]">
+            <div className="flex items-center justify-between border-b border-line px-4 py-2">
+              <h2 className="font-serif text-xl font-semibold">Buscar</h2>
+              <button type="button" className={tb} onClick={closeSearch} aria-label="Cerrar la búsqueda"><Icon name="close" /></button>
+            </div>
+            <SearchPanel s={sr} onJump={jumpResult} nameOf={printed ? name : undefined} autoFocus />
+          </aside>
+        )}
+
         {offer > 0 && ready && (
           <div className="fade-in absolute inset-x-0 z-30 mx-auto flex w-[min(92vw,28rem)] flex-wrap items-center justify-center gap-2 rounded-card border border-line bg-bg p-3 shadow-[var(--shadow-float)]" style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
             <button className="btn btn-primary" onClick={() => goTo(offer)}>Continuar en la página {printed ? name(offer) : offer}</button>
@@ -554,8 +608,17 @@ export default function Viewer({ slug, title, pageCount, initialPage, offer: off
         <div className="max-h-[60vh] overflow-auto"><BookmarksPanel slug={slug} items={bm.items} current={page} onJump={jumpTo} onRename={bm.rename} onDelete={bm.remove} nameOf={printed ? name : undefined} /></div>
       </Sheet>
 
+      <Sheet open={chOpen && phoneUi} onClose={() => setChOpen(false)} label="Capítulos">
+        <h2 className="mb-2 font-serif text-2xl font-semibold">Capítulos</h2>
+        <div className="max-h-[60vh] overflow-auto" data-testid="chapters-panel"><ChaptersList chapters={chapters} pageCount={pageCount} current={pdf ? page : (visible[0] ?? page)} onJump={jumpChapter} nameOf={printed ? name : undefined} /></div>
+      </Sheet>
+      <Sheet open={srOpen && phoneUi} onClose={() => setSrOpen(false)} label="Buscar en el libro">
+        <h2 className="mb-1 font-serif text-2xl font-semibold">Buscar</h2>
+        <div className="flex max-h-[60vh] min-h-0 flex-col"><SearchPanel s={sr} onJump={jumpResult} nameOf={printed ? name : undefined} autoFocus /></div>
+      </Sheet>
+
       {canDownload && (
-        <DownloadDialog open={dlOpen} onClose={() => setDlOpen(false)} bookTitle={title} slug={slug} pageCount={pageCount} mode="user" labels={labels}
+        <DownloadDialog open={dlOpen} onClose={() => setDlOpen(false)} bookTitle={title} slug={slug} pageCount={pageCount} mode="user" labels={labels} chapters={chapters}
           current={pdf ? [page, page] : [visible[0] ?? page, visible[visible.length - 1] ?? page]} />
       )}
 
