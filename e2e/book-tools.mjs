@@ -255,7 +255,7 @@ for (const [B, kind] of [[D, "imagenes"], [C, "recorte"]]) {
   await p.waitForSelector("dialog[open]");
   await dialog(p).getByTestId("dl-chapter").selectOption({ index: 1 });
   t.check(`${kind}: «Capítulo» picks a chapter (radio on, 4 pages)`, (await dialog(p).getByTestId("dl-chapter-radio").isChecked()) && (await dialog(p).getByTestId("dl-chapter").locator("option").nth(1).innerText()).includes("págs. 5–8"));
-  await p.waitForFunction(() => document.querySelector("[data-testid=dl-method]")?.getAttribute("data-method"), null, { timeout: 15000 });
+  await p.waitForFunction(() => document.querySelector("dialog[open] [data-testid=dl-method]")?.getAttribute("data-method"), null, { timeout: 15000 });
   const method = await dialog(p).getByTestId("dl-method").getAttribute("data-method");
   t.check(`${kind}: the method is «${kind}»${kind === "imagenes" ? " and says it carries the text" : ""}`, method === kind && (kind !== "imagenes" || (await dialog(p).getByTestId("dl-method").innerText()).includes("con su texto")), `${method} ${await dialog(p).getByTestId("dl-method").innerText()}`);
   if (shots && kind === "imagenes") await p.screenshot({ path: path.join(SHOTS, "download-chapter-1440-light.png") });
@@ -290,7 +290,7 @@ for (const [B, kind] of [[D, "imagenes"], [C, "recorte"]]) {
   await sleep(800);
   await row.getByRole("button", { name: "Descargar", exact: true }).click();
   await p.waitForSelector("dialog[open]");
-  await p.waitForFunction(() => /con su texto/.test(document.querySelector("[data-testid=dl-method]")?.textContent ?? ""), null, { timeout: 15000 });
+  await p.waitForFunction(() => /con su texto/.test(document.querySelector("dialog[open] [data-testid=dl-method]")?.textContent ?? ""), null, { timeout: 15000 });
   const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 60000 }), dialog(p).getByRole("button", { name: "Descargar PDF" }).click()]);
   const file = path.join(out, "ocr.pdf");
   await dl.saveAs(file);

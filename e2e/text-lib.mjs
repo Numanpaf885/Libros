@@ -138,6 +138,8 @@ export async function uploadPdf(br, { title, bytes, original = false }) {
   await p.setInputFiles("#pdf-file", { name: `${title}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(bytes) });
   await p.fill("#up-title", title);
   const keep = p.locator("input[name=keep-original]");
+  // the option appears once the admin knows the sheet has the columns for it (a cold dev server can take a while)
+  if (original) await keep.waitFor({ timeout: 60000 });
   if (await keep.count()) await keep.setChecked(original);
   await p.getByRole("button", { name: "Subir libro" }).click();
   await p.waitForSelector("text=Libro subido correctamente", { timeout: 180000 });
