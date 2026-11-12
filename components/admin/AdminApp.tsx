@@ -78,33 +78,33 @@ function useUploader(onDone: () => void) {
     setBusy(true); setErr(""); setProgress(null); setOrig(null);
     try {
       const bookId = await uploadFlow({ status: "draft", ...flow, text: !!flow.text && !!flow.file, onProgress: setProgress, signal: ctl.current.signal });
-      toast("ok", "Libro subido correctamente");
-      // After the pages are stored (the book is complete and usable): printed page numbers and chapters (bookmarks) found
-      // in the PDF, then the original.
+      // The pages are stored (the book is complete and usable). The printed page numbers and the chapters (bookmarks)
+      // found in the PDF are saved before saying so, so that leaving the page at once keeps them; then the original.
+      let meta: Awaited<ReturnType<typeof readPdfMeta>> | null = null;
+      let labels = "";
       if (flow.file && (extras || chapters)) {
-        let labels = "";
+        meta = await readPdfMeta(flow.file).catch(() => null);
+        if (meta && chapters && meta.chapters.length >= 2) await api(`/api/admin/books/${bookId}/chapters`, "PUT", { chapters: meta.chapters }).catch(() => {});
+        if (meta && extras) {
+          labels = stringifyLabels(rangesFromPageLabels(meta.labels));
+          if (labels) await api(`/api/admin/books/${bookId}/labels`, "PUT", { page_labels: labels }).catch(() => {});
+        }
+      }
+      toast("ok", "Libro subido correctamente");
+      if (flow.file && extras && original) {
         try {
-          const meta = await readPdfMeta(flow.file);
-          if (chapters && meta.chapters.length >= 2) await api(`/api/admin/books/${bookId}/chapters`, "PUT", { chapters: meta.chapters }).catch(() => {});
-          if (extras) {
-            labels = stringifyLabels(rangesFromPageLabels(meta.labels));
-            if (labels) await api(`/api/admin/books/${bookId}/labels`, "PUT", { page_labels: labels });
-            if (original) {
-              await uploadOriginal({ bookId, file: flow.file, pages: meta.pageCount, pageLabels: labels, onProgress: setOrig, signal: ctl.current.signal });
-              toast("ok", "PDF original guardado");
-            }
+          if (!meta) throw new Error("PDF unreadable");
+          await uploadOriginal({ bookId, file: flow.file, pages: meta.pageCount, pageLabels: labels, onProgress: setOrig, signal: ctl.current.signal });
+          toast("ok", "PDF original guardado");
+        } catch {
+          if (ctl.current.signal.aborted) {
+            await abortOriginal(bookId);
+            const m = "Subida del PDF original cancelada. El libro ya está subido; puedes añadirlo después con «PDF original».";
+            setErr(m); toast("error", m);
+          } else {
+            const m = "El libro se ha subido, pero el PDF original no. Abre «PDF original» en el libro y selecciona el mismo PDF para continuar.";
+            setErr(m); toast("error", m);
           }
-        } catch (e) {
-          if (original) {
-            if (ctl.current.signal.aborted) {
-              await abortOriginal(bookId);
-              const m = "Subida del PDF original cancelada. El libro ya está subido; puedes añadirlo después con «PDF original».";
-              setErr(m); toast("error", m);
-            } else {
-              const m = "El libro se ha subido, pero el PDF original no. Abre «PDF original» en el libro y selecciona el mismo PDF para continuar.";
-              setErr(m); toast("error", m);
-            }
-          } else void e;
         }
       }
     } catch (e) {

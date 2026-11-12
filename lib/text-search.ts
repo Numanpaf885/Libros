@@ -1,7 +1,7 @@
-// Searching a book's text (the stored chunks, lib/text-layer.ts). Pure: each page becomes one string in reading order
-// (body text, then the margin; rotated text left out), with a hyphen at a line end joined to the next line, and matches
-// ignore case, accents and ligatures ("aerodinamica" finds "AERODINÁMICA"). A match gives its page, a short snippet and the boxes
-// of the words it covers, to highlight them over the page image.
+// Searching a book's text (the stored chunks, lib/text-layer.ts). Pure: each page's body text becomes one string in
+// reading order (the margin, running headers and page numbers, is left out), with a hyphen at a line end joined to the
+// next line, and matches ignore case, accents and ligatures ("aerodinamica" finds "AERODINÁMICA"). A match gives its
+// page, a short snippet and the boxes of the words it covers, to highlight them over the page image.
 import { textWidth } from "./glyph-widths";
 import { isRotated, pageLayout, type TextItem } from "./text-layer";
 
@@ -40,7 +40,8 @@ export function indexPage(n: number, items: readonly TextItem[], ratio = DEFAULT
   const layout = pageLayout(items, ratio);
   let text = "";
   const spans: Span[] = [];
-  for (const i of layout.order) {
+  // the body only: a running header or a page number would match on every page (and end up in the snippets)
+  for (const i of layout.order.slice(0, layout.body)) {
     const it = items[i];
     if (isRotated(it)) continue;
     if (text) {
@@ -65,7 +66,9 @@ function boxesOf(p: PageIndex, from: number, to: number): Box[] {
     if (s.to <= from || s.from >= to) continue;
     const a = Math.max(from, s.from) - s.from, b = Math.min(to, s.to) - s.from;
     const it = s.item, all = textWidth(it.s) || 1;
-    const x0 = textWidth(it.s.slice(0, a)) / all, x1 = textWidth(it.s.slice(0, b)) / all;
+    // half an average character more on each side: the printed font is not the one measured, like a highlighter
+    const pad = 0.5 / Math.max(1, it.s.length);
+    const x0 = Math.max(0, textWidth(it.s.slice(0, a)) / all - pad), x1 = Math.min(1, textWidth(it.s.slice(0, b)) / all + pad);
     out.push({ x: it.x + it.w * x0, y: it.y, w: Math.max(it.w * (x1 - x0), 0.002), h: it.h });
   }
   return out;
