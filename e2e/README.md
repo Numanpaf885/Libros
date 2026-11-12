@@ -24,8 +24,16 @@ Texto seleccionable (subida con texto, capa del lector, copiar, alineación, «E
 DATA_BACKEND=mock npx next dev -p 3100
 node e2e/text.mjs                       # SCREENSHOTS=1 guarda capturas en screenshots/
 node e2e/selection.mjs                  # página con márgenes: título lateral girado, cabecera, pie, nota y dos columnas
+node e2e/book-tools.mjs                 # capítulos (marcadores del PDF, panel), búsqueda, descargas de un capítulo y con texto (también OCR)
 node e2e/perf-turn.mjs                  # fps al pasar página (doble página y móvil)
 npm run build && node e2e/bundle-size.mjs   # tamaño del JS del lector; comprueba que no lleva pdf.js ni tesseract.js
+```
+
+Capítulos con una hoja sin la columna `chapters` (antes y después de «Actualizar base de datos»):
+
+```bash
+MOCK_MISSING_COLUMNS=chapters DATA_BACKEND=mock npx next dev -p 3100
+node e2e/chapters-missing.mjs           # reinicia el servidor para repetirlo
 ```
 
 Contacto, «Mensajes», «Ajustes legales», páginas legales, aviso de cookies, `/activar`, «Exportar datos» y «Anonimizar». `legal.mjs` también graba todas las cookies y claves de almacenamiento de una visita real (leer, entrar, desbloquear, descargar, cambiar el tema) y comprueba que coinciden exactamente con la tabla de `/cookies` (`lib/cookie-inventory.ts`):

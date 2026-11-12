@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { isReplacement, toAdminBook } from "@/lib/books";
-import { bookExtrasReady, createBook, listBooks } from "@/lib/db/repo";
+import { bookExtrasReady, chaptersReady, createBook, listBooks } from "@/lib/db/repo";
 import { guardAdmin, jsonError, ok, parseBody, safe } from "@/lib/http";
 import { slugify } from "@/lib/slug";
 
@@ -11,8 +11,9 @@ export const GET = safe(async (req: Request) => {
   const all = await listBooks();
   const pending = new Map(all.filter(isReplacement).map((b) => [b.slug.replace(/^__replace__/, ""), b]));
   const books = all.filter((b) => !isReplacement(b)).map((b) => toAdminBook(b, pending.get(b.id) ?? null));
-  // extras: whether `npm run setup-sheet` has added the page_labels / original_pdf_* columns (the admin UI hides those features otherwise)
-  return ok({ books, extras: await bookExtrasReady() });
+  // extras: whether `npm run setup-sheet` has added the page_labels / original_pdf_* columns (the admin UI hides those features otherwise);
+  // chapters: whether books.chapters exists (the «Capítulos» panel asks to update the database otherwise)
+  return ok({ books, extras: await bookExtrasReady(), chapters: await chaptersReady() });
 });
 
 const create = z.object({

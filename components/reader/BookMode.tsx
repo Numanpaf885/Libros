@@ -6,6 +6,7 @@ import { getFace, holdFaces, prepareFace, trimFaces } from "@/lib/client/faces";
 import { loadPage, peekPage, trimPages, Unauthorized } from "@/lib/client/pages";
 import { pageOfUnit, pagesOfUnit, realPages, unitCount, unitOf, windowUnits } from "@/lib/client/spreads";
 import { hasTextSelection, holdText } from "@/lib/client/text";
+import SearchMarks from "./SearchMarks";
 import TextLayer from "./TextLayer";
 
 export type PageEffect = "turn" | "slide" | "none";
@@ -68,17 +69,25 @@ function PageFace({ slug, n, w, h, version, failed, marked, side, text, onRetry 
           <button type="button" className="btn btn-sm" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRetry(n); }}><Icon name="rotate" size={16} />Reintentar</button>
         </div>
       )}
-      {text && <FaceText slug={slug} n={n} w={w} h={h} />}
+      <FaceOver slug={slug} n={n} w={w} h={h} text={text} />
     </div>
   );
 }
-/** The text layer over the image as the face draws it: fitted inside w x h and centred (see lib/client/faces.ts). */
-function FaceText({ slug, n, w, h }: { slug: string; n: number; w: number; h: number }) {
+/**
+ * What lies over the image as the face draws it, fitted inside w x h and centred (see lib/client/faces.ts): the
+ * search matches and, when the book has it, the text layer.
+ */
+function FaceOver({ slug, n, w, h, text }: { slug: string; n: number; w: number; h: number; text: boolean }) {
   const bmp = peekPage(slug, n);
   if (!bmp) return null;
   const r = bmp.height / bmp.width;
   const dw = r > h / w ? h / r : w, dh = dw * r;
-  return <div className="absolute" style={{ left: (w - dw) / 2, top: (h - dh) / 2, width: dw, height: dh }}><TextLayer slug={slug} n={n} width={dw} ratio={r} /></div>;
+  return (
+    <div className={text ? "absolute" : "pointer-events-none absolute"} style={{ left: (w - dw) / 2, top: (h - dh) / 2, width: dw, height: dh }}>
+      <SearchMarks n={n} />
+      {text && <TextLayer slug={slug} n={n} width={dw} ratio={r} />}
+    </div>
+  );
 }
 
 /** A pre-made gradient layer: only its opacity is animated (never box-shadow or filter). */

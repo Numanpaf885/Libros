@@ -11,6 +11,7 @@
   --accent: #1e3a5f;
   --accent-fg: #ffffff;
   --text-sel: rgba(30, 58, 95, 0.3); /* the accent at 30 %: selection over the page images */
+  --search-hit: rgba(255, 190, 0, 0.42); /* search matches: a highlighter over the (white) page images */
   --danger: #b3261e;
   --ok: #1f7a3a;
   --muted-glass: #45453f; /* secondary text on the translucent bars: AA even over a dark cover or page */
@@ -32,6 +33,7 @@
   --accent: #8db4e2;
   --accent-fg: #111214;
   --text-sel: rgba(141, 180, 226, 0.3);
+  --search-hit: rgba(255, 190, 0, 0.42);
   --danger: #f28b82;
   --ok: #7cc38d;
   --muted-glass: #d4d4d4;
@@ -45,7 +47,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #111214; --surface: #1a1b1e; --line: #2a2c30; --line-strong: #6f727a; --fg: #ececec; --muted: #a1a1a1;
-    --accent: #8db4e2; --accent-fg: #111214; --text-sel: rgba(141, 180, 226, 0.3); --danger: #f28b82; --ok: #7cc38d;
+    --accent: #8db4e2; --accent-fg: #111214; --text-sel: rgba(141, 180, 226, 0.3); --search-hit: rgba(255, 190, 0, 0.42); --danger: #f28b82; --ok: #7cc38d;
     --muted-glass: #d4d4d4; --glass: rgba(17, 18, 20, 0.72); --glass-solid: #111214; --glass-line: rgba(255, 255, 255, 0.14);
     --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4); color-scheme: dark;
   }
@@ -212,6 +214,10 @@ html[data-reading] .cookie-notice { display: none; }
 .reader-root .text-layer .text-margin span, .reader-root .text-layer[data-sel="margin"] > span { -webkit-user-select: none; user-select: none; }
 .reader-root .text-layer[data-sel="margin"] .text-margin span:not(.tl-rot) { -webkit-user-select: text; user-select: text; }
 .text-layer .tl-rot { pointer-events: none; cursor: inherit; }
+/* Search matches over a page (lib/client/search.ts): under the text layer, never in the way of the pointer */
+.search-marks { position: absolute; inset: 0; pointer-events: none; }
+.search-marks span { position: absolute; background: var(--search-hit); border-radius: 2px; mix-blend-mode: multiply; }
+mark.search-hit { background: var(--search-hit); color: inherit; border-radius: 2px; padding: 0 1px; }
 /* While a drag selects (data-selecting), .tl-end covers the layer under the text (lib/client/text.ts moves it next to
    the selection's end where needed), so empty space never makes the selection jump; the text the drag may not select
    (the margin, or the body during a margin drag) lets the pointer through to it. */

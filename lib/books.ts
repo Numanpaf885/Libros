@@ -9,7 +9,7 @@ export const toAdminBook = (b: Book, pending: Book | null = null): AdminBook => 
   id: b.id, slug: b.slug, title: b.title, description: b.description,
   page_count: b.page_count, status: b.status, updated_at: b.updated_at,
   author: b.author, category: b.category, year: b.year, page_labels: b.page_labels,
-  pending_replacement: pending?.id ?? null, original_pdf_size: b.original_pdf_size,
+  pending_replacement: pending?.id ?? null, original_pdf_size: b.original_pdf_size, chapters: b.chapters,
 });
 
 /** Which pages (and the cover) are already stored under this book's prefix. */

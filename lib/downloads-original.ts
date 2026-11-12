@@ -1,14 +1,20 @@
 import "server-only";
 import { avgPageBytes } from "./books";
+import { bookTextMap } from "./book-search";
 import { finishDownload, getDownloadFresh, methodColumnReady } from "./db/users";
 import { GET_TTL_S, originalKey, storage } from "./storage";
 import type { Book, DownloadRecord } from "./types";
 
-/** What the download dialog needs to choose a method. */
-export async function downloadInfo(book: Book) {
+/**
+ * What the download dialog needs to choose a method and to put the text in the PDF. `withText`: the requester may have
+ * the text (the admin; a reader only when copying is allowed). text_map: one character per page ("t" text from the PDF,
+ * "o" recognised by OCR, see pageMap), "" when there is no text for them.
+ */
+export async function downloadInfo(book: Book, withText: boolean) {
   // Without the downloads.method column a download cannot record how it was made: only the page-image method is offered.
   const original = book.original_pdf_size > 0 && (await methodColumnReady());
-  return { original_pdf_size: original ? book.original_pdf_size : 0, avg_page_bytes: await avgPageBytes(book) };
+  const text_map = withText ? await bookTextMap(book).catch(() => "") : "";
+  return { original_pdf_size: original ? book.original_pdf_size : 0, avg_page_bytes: await avgPageBytes(book), text_map };
 }
 
 /**

@@ -26,6 +26,7 @@ export default async function PrivacidadPage() {
         <li><strong>Códigos de acceso:</strong> qué libros tienes desbloqueados, con qué código y cuándo. Los códigos se guardan solo como hash.</li>
       </ul>
       <p>Para frenar abusos, la web cuenta durante unos minutos los intentos que llegan desde cada dirección IP. Ese recuento está solo en la memoria del servidor y no se guarda.</p>
+      <p>Lo que buscas dentro de un libro se envía a la web solo para encontrar las páginas donde aparece; no se guarda.</p>
       <p>La web también recoge estadísticas de visitas anónimas con Vercel Web Analytics (qué páginas se ven, país, tipo de dispositivo y navegador), sin cookies y sin identificarte.</p>
       <p>En tu navegador solo se guardan las cookies técnicas y las preferencias que se explican en la <Link href="/cookies">Política de cookies</Link>.</p>
 

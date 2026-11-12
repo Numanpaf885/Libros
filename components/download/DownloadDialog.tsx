@@ -1,16 +1,22 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
+import { chapterRanges, fileSlug, type Chapter } from "@/lib/chapters";
 import { api, ApiError, AuthError, errText } from "@/lib/client/api";
 import { cropPdf, fetchWithProgress } from "@/lib/client/pdf-crop";
 import { buildPdf, saveBlob, saveUrl } from "@/lib/client/pdf-download";
+import { loadPageText } from "@/lib/client/text";
+import { readChunk } from "@/lib/client/text-store";
 import { chooseMethod, deviceOfUa, formatBytes } from "@/lib/download-method";
 import { hasLabels, labelOf, labelTotal, pageFromInput, type LabelRange } from "@/lib/page-labels";
+import { chunkOf, type PageText, type TextItem } from "@/lib/text-layer";
 import type { DownloadMethod } from "@/lib/types";
 
 export const MAX_USER_PAGES = 1000;
 type Result = null | "completed" | "cancelled" | "failed" | "sent";
 const NO_LABELS: LabelRange[] = [];
-interface Info { original_pdf_size: number; avg_page_bytes: number }
+const NO_CHAPTERS: Chapter[] = [];
+/** text_map: one character per page, "t" text from the PDF, "o" recognised by OCR; "" when the PDF gets no text */
+interface Info { original_pdf_size: number; avg_page_bytes: number; text_map?: string }
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -24,6 +30,8 @@ interface Props {
   current?: [number, number];
   /** printed page numbers: the range is typed in them, and the file pages are shown next to it */
   labels?: LabelRange[];
+  /** the book's chapters: one of them can be downloaded */
+  chapters?: Chapter[];
 }
 
 /** Tells the server how the download ended: one write. `beacon` is for a closing tab, where fetch may be cut off. */
@@ -35,10 +43,26 @@ function finish(id: string | null, status: "completed" | "cancelled" | "failed",
   void fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
 }
 
-export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCount, mode, bookId, current, labels = NO_LABELS }: Props) {
+/**
+ * The text of a page for the PDF: a reader reads the chunks through the reader's route (which answers only when copying
+ * is allowed), the admin through the admin's. One request per 20 pages.
+ */
+function textSource(mode: "admin" | "user", slug: string, bookId: string | undefined, pageCount: number) {
+  if (mode === "user") return (n: number) => loadPageText(slug, n);
+  const chunks = new Map<number, Promise<Map<number, PageText>>>();
+  return async (n: number): Promise<TextItem[] | null> => {
+    const k = chunkOf(n);
+    let c = chunks.get(k);
+    if (!c) { c = readChunk(bookId!, k, pageCount); chunks.set(k, c); }
+    return (await c).get(n)?.items ?? null;
+  };
+}
+
+export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCount, mode, bookId, current, labels = NO_LABELS, chapters = NO_CHAPTERS }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const uid = useId();
-  const [scope, setScope] = useState<"all" | "range">("all");
+  const [scope, setScope] = useState<"all" | "chapter" | "range">("all");
+  const [chapter, setChapter] = useState(0);
   const [from, setFrom] = useState("1");
   const [to, setTo] = useState(String(pageCount));
   const [running, setRunning] = useState(false);
@@ -57,7 +81,7 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
     const d = ref.current;
     if (!d) return;
     if (open && !d.open) {
-      setScope("all"); setFrom(shownFirst); setTo(shownLast); setProgress(null); setResult(null); setError(""); setFile("");
+      setScope("all"); setChapter(0); setFrom(shownFirst); setTo(shownLast); setProgress(null); setResult(null); setError(""); setFile("");
       d.showModal();
     }
     if (!open && d.open) d.close();
@@ -83,8 +107,11 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
 
   // `a`..`b` are FILE pages. With printed numbers, what is typed is converted (a number, a roman numeral or a label).
   const asFile = (v: string): number => (printed ? (pageFromInput(labels, pageCount, v) ?? NaN) : Number(v));
-  const a = scope === "all" ? 1 : asFile(from);
-  const b = scope === "all" ? pageCount : asFile(to);
+  const ranges = chapterRanges(chapters, pageCount);
+  const ch = scope === "chapter" ? ranges[Math.min(chapter, ranges.length - 1)] : undefined;
+  const a = scope === "all" ? 1 : ch ? ch.from : asFile(from);
+  const b = scope === "all" ? pageCount : ch ? ch.to : asFile(to);
+  const shownPages = (x: number, y: number) => (printed ? (x === y ? labelOf(labels, x) || String(x) : `${labelOf(labels, x) || x}–${labelOf(labels, y) || y}`) : x === y ? String(x) : `${x}–${y}`);
   const intOk = (v: string) => /^\d{1,5}$/.test(v.trim());
   let problem = "";
   if (scope === "range" && printed && (Number.isNaN(a) || Number.isNaN(b))) problem = "No encuentro esas páginas. Escribe el número impreso (45), un número romano (iii) o una etiqueta.";
@@ -93,13 +120,19 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
   else if (a > b) problem = "La página inicial no puede ser mayor que la final.";
   else if (mode === "user" && b - a + 1 > MAX_USER_PAGES) problem = `Puedes descargar como máximo ${MAX_USER_PAGES.toLocaleString("es-ES")} páginas cada vez.`;
   const valid = !problem;
-  const choice = valid && info ? chooseMethod({ from: a, to: b, pageCount, originalSize: info.original_pdf_size, avgPageBytes: info.avg_page_bytes, device: deviceOfUa(typeof navigator === "undefined" ? "" : navigator.userAgent) }) : null;
+  const textMap = (valid && info?.text_map) || "";
+  const inRange = textMap.slice(a - 1, b);
+  const choice = valid && info ? chooseMethod({ from: a, to: b, pageCount, originalSize: info.original_pdf_size, avgPageBytes: info.avg_page_bytes, device: deviceOfUa(typeof navigator === "undefined" ? "" : navigator.userAgent), ocr: inRange.includes("o") }) : null;
   const method: DownloadMethod = choice?.method ?? "imagenes";
+  // the PDF carries the text: built from images, any page with text; cut from the original, the pages recognised by OCR
+  const withText = method === "imagenes" ? /[to]/.test(inRange) : method === "recorte" && inRange.includes("o");
 
   async function start() {
     if (problem || running) return;
     setError(""); setResult(null); setProgress({ done: 0, total: b - a + 1 }); setRunning(true);
-    const name = method === "original" ? `${slug}.pdf` : `${slug}-p${a}-${b}.pdf`;
+    const name = method === "original" ? `${slug}.pdf` : ch ? `${slug}-${fileSlug(ch.t)}.pdf` : `${slug}-p${a}-${b}.pdf`;
+    const map = textMap;
+    const text = textSource(mode, slug, bookId, pageCount);
     const c = new AbortController();
     ctl.current = c;
     let id: string | null = null;
@@ -130,9 +163,9 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
           setProgress({ done: 0, total: o.size, bytes: true });
           const bytes = await fetchWithProgress(o.url, o.size, c.signal, (done, total) => setProgress({ done, total, bytes: true }));
           setProgress({ done: 1, total: 1, note: "Recortando las páginas…" });
-          pdf = await cropPdf(bytes, a, b);
+          pdf = await cropPdf(bytes, a, b, (n) => (map[n - 1] === "o" ? text(n).catch(() => null) : Promise.resolve(null)));
         } else {
-          pdf = await buildPdf({ from: a, to: b, urls, signal: c.signal, onProgress: (done, total) => setProgress({ done, total }) });
+          pdf = await buildPdf({ from: a, to: b, urls, signal: c.signal, onProgress: (done, total) => setProgress({ done, total }), textOf: (n) => (map[n - 1] === "t" || map[n - 1] === "o" ? text(n) : Promise.resolve(null)) });
         }
         saveBlob(pdf, name);
         active.current = null;
@@ -155,8 +188,8 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   const methodText = !valid ? "" : !info ? "Calculando el mejor método…"
     : method === "original" ? `PDF original · ${formatBytes(choice!.estimate)}`
-    : method === "recorte" ? `Recorte del PDF original · se descargan ${formatBytes(choice!.estimate)}`
-    : `Se generará a partir de las páginas${choice!.estimate > 0 ? ` · ~${formatBytes(choice!.estimate)}` : ""}`;
+    : method === "recorte" ? `Recorte del PDF original${withText ? " con el texto reconocido" : ""} · se descargan ${formatBytes(choice!.estimate)}`
+    : `Se generará a partir de las páginas${withText ? ", con su texto" : ""}${choice!.estimate > 0 ? ` · ~${formatBytes(choice!.estimate)}` : ""}`;
 
   return (
     <dialog
@@ -174,6 +207,15 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
         <fieldset className="space-y-1" disabled={running}>
           <legend className="sr-only">Páginas</legend>
           <label className="flex min-h-11 items-center gap-3 text-[15px]"><input type="radio" name={`${uid}-scope`} checked={scope === "all"} onChange={() => setScope("all")} />Todo el libro <span className="tnum text-muted">({pageCount} páginas)</span></label>
+          {ranges.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex min-h-11 items-center gap-3 text-[15px]"><input type="radio" name={`${uid}-scope`} checked={scope === "chapter"} onChange={() => setScope("chapter")} data-testid="dl-chapter-radio" />Capítulo</label>
+              <label htmlFor={`${uid}-chapter`} className="sr-only">Capítulo que se descarga</label>
+              <select id={`${uid}-chapter`} className="field min-h-11 min-w-0 max-w-full flex-1 sm:max-w-[20rem]" value={chapter} onFocus={() => setScope("chapter")} onChange={(e) => { setScope("chapter"); setChapter(Number(e.target.value)); }} data-testid="dl-chapter">
+                {ranges.map((r, i) => <option key={r.from} value={i}>{r.t} · {r.from === r.to ? "pág." : "págs."} {shownPages(r.from, r.to)}</option>)}
+              </select>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <label className="flex min-h-11 items-center gap-3 text-[15px]"><input type="radio" name={`${uid}-scope`} checked={scope === "range"} onChange={() => setScope("range")} />Páginas</label>
             <label htmlFor={`${uid}-from`} className="sr-only">Desde la página</label>
@@ -185,9 +227,9 @@ export default function DownloadDialog({ open, onClose, bookTitle, slug, pageCou
           </div>
         </fieldset>
 
-        {problem && scope === "range" && <p role="alert" className="err" data-testid="dl-problem">{problem}</p>}
+        {problem && scope !== "all" && <p role="alert" className="err" data-testid="dl-problem">{problem}</p>}
         {problem && scope === "all" && <p role="alert" className="err" data-testid="dl-problem">{mode === "user" ? `Este libro tiene más de ${MAX_USER_PAGES.toLocaleString("es-ES")} páginas: elige un rango más corto.` : problem}</p>}
-        {printed && valid && <p className="tnum text-[15px]" data-testid="dl-file-range">{scope === "all" ? `Todo el libro (archivo 1–${pageCount})` : `Páginas ${from.trim()} a ${to.trim()} (archivo ${a}–${b})`}</p>}
+        {printed && valid && <p className="tnum text-[15px]" data-testid="dl-file-range">{scope === "all" ? `Todo el libro (archivo 1–${pageCount})` : ch ? `${a === b ? "Página" : "Páginas"} ${shownPages(a, b)} (archivo ${a}–${b})` : `Páginas ${from.trim()} a ${to.trim()} (archivo ${a}–${b})`}</p>}
         {methodText && <p className="text-[15px] font-medium" data-testid="dl-method" data-method={info ? method : ""}>{methodText}</p>}
         <p className="hint">{method === "original" ? "Se descarga el PDF original tal cual" : method === "recorte" ? "Se descarga el PDF original y las páginas que pides se recortan en tu dispositivo" : "El PDF se prepara en tu dispositivo, página a página"}{mode === "user" ? `; puedes hacer hasta 5 descargas por hora` : ""}.</p>
 

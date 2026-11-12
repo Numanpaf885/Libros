@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { drawPage, loadPage, Unauthorized } from "@/lib/client/pages";
+import SearchMarks from "./SearchMarks";
 import TextLayer from "./TextLayer";
 
 interface Props {
@@ -57,6 +58,7 @@ export default function PageCanvas({ slug, n, width, height, delay = 0, onRatio,
       )}
       <canvas ref={canvas} aria-label={`Página ${n}`} className={`block h-full w-full transition-opacity duration-150 ${loaded ? "opacity-100" : "opacity-0"}`} />
       {/* inside the 1 px border, like the canvas */}
+      {loaded && <SearchMarks n={n} />}
       {text && loaded && <TextLayer slug={slug} n={n} width={width - 2} ratio={(height - 2) / (width - 2)} />}
     </div>
   );

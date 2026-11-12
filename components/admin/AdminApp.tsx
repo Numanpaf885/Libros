@@ -27,6 +27,8 @@ import LegalSettingsPanel from "./LegalSettingsPanel";
 import MaintenancePanel from "./MaintenancePanel";
 import MessagesPanel from "./MessagesPanel";
 import SourceSwitch, { type SourceKind } from "./SourceSwitch";
+import { parseChapters } from "@/lib/chapters";
+import ChaptersPanel from "./ChaptersPanel";
 import TextPanel from "./TextPanel";
 import UsersPanel from "./UsersPanel";
 
@@ -66,36 +68,43 @@ function useUploader(onDone: () => void) {
   const [orig, setOrig] = useState<OriginalProgress | null>(null);
   const ctl = useRef<AbortController | null>(null);
 
-  /** `original`: also store the PDF itself (fast downloads). `extras`: the sheet has the columns that need. `text`: also store the pages' text. */
-  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft"; original?: boolean; extras?: boolean; text?: boolean }) {
-    const { original, extras, ...flow } = o;
+  /**
+   * `original`: also store the PDF itself (fast downloads). `extras`: the sheet has the columns that need. `text`: also
+   * store the pages' text. `chapters`: the sheet has books.chapters (the PDF's bookmarks become the chapters).
+   */
+  async function start(o: { file?: File; images?: ImagePlan; mode: UploadMode; bookId?: string; meta?: { title: string; description: string; author?: string; category?: string; year?: string }; status?: "published" | "draft"; original?: boolean; extras?: boolean; text?: boolean; chapters?: boolean }) {
+    const { original, extras, chapters, ...flow } = o;
     ctl.current = new AbortController();
     setBusy(true); setErr(""); setProgress(null); setOrig(null);
     try {
       const bookId = await uploadFlow({ status: "draft", ...flow, text: !!flow.text && !!flow.file, onProgress: setProgress, signal: ctl.current.signal });
-      toast("ok", "Libro subido correctamente");
-      // After the pages are stored (the book is complete and usable): printed page numbers found in the PDF, then the original.
-      if (flow.file && extras) {
-        let labels = "";
-        try {
-          const meta = await readPdfMeta(flow.file);
+      // The pages are stored (the book is complete and usable). The printed page numbers and the chapters (bookmarks)
+      // found in the PDF are saved before saying so, so that leaving the page at once keeps them; then the original.
+      let meta: Awaited<ReturnType<typeof readPdfMeta>> | null = null;
+      let labels = "";
+      if (flow.file && (extras || chapters)) {
+        meta = await readPdfMeta(flow.file).catch(() => null);
+        if (meta && chapters && meta.chapters.length >= 2) await api(`/api/admin/books/${bookId}/chapters`, "PUT", { chapters: meta.chapters }).catch(() => {});
+        if (meta && extras) {
           labels = stringifyLabels(rangesFromPageLabels(meta.labels));
-          if (labels) await api(`/api/admin/books/${bookId}/labels`, "PUT", { page_labels: labels });
-          if (original) {
-            await uploadOriginal({ bookId, file: flow.file, pages: meta.pageCount, pageLabels: labels, onProgress: setOrig, signal: ctl.current.signal });
-            toast("ok", "PDF original guardado");
+          if (labels) await api(`/api/admin/books/${bookId}/labels`, "PUT", { page_labels: labels }).catch(() => {});
+        }
+      }
+      toast("ok", "Libro subido correctamente");
+      if (flow.file && extras && original) {
+        try {
+          if (!meta) throw new Error("PDF unreadable");
+          await uploadOriginal({ bookId, file: flow.file, pages: meta.pageCount, pageLabels: labels, onProgress: setOrig, signal: ctl.current.signal });
+          toast("ok", "PDF original guardado");
+        } catch {
+          if (ctl.current.signal.aborted) {
+            await abortOriginal(bookId);
+            const m = "Subida del PDF original cancelada. El libro ya está subido; puedes añadirlo después con «PDF original».";
+            setErr(m); toast("error", m);
+          } else {
+            const m = "El libro se ha subido, pero el PDF original no. Abre «PDF original» en el libro y selecciona el mismo PDF para continuar.";
+            setErr(m); toast("error", m);
           }
-        } catch (e) {
-          if (original) {
-            if (ctl.current.signal.aborted) {
-              await abortOriginal(bookId);
-              const m = "Subida del PDF original cancelada. El libro ya está subido; puedes añadirlo después con «PDF original».";
-              setErr(m); toast("error", m);
-            } else {
-              const m = "El libro se ha subido, pero el PDF original no. Abre «PDF original» en el libro y selecciona el mismo PDF para continuar.";
-              setErr(m); toast("error", m);
-            }
-          } else void e;
         }
       }
     } catch (e) {
@@ -116,7 +125,7 @@ function useUploader(onDone: () => void) {
   return { busy, progress, orig, err, start, cancel: () => ctl.current?.abort() };
 }
 
-function UploadCard({ onDone, phone, extras, text }: { onDone: () => void; phone: boolean; extras: boolean; text: boolean }) {
+function UploadCard({ onDone, phone, extras, text, chapters }: { onDone: () => void; phone: boolean; extras: boolean; text: boolean; chapters: boolean }) {
   const up = useUploader(onDone);
   const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
@@ -138,7 +147,7 @@ function UploadCard({ onDone, phone, extras, text }: { onDone: () => void; phone
       onSubmit={async (e) => {
         e.preventDefault();
         if (source === "images" ? !imgs.plan : !file) return;
-        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year }, extras, text, original: extras && source === "pdf" && keepOriginal });
+        await up.start({ ...(source === "images" ? { images: imgs.plan! } : { file: file! }), mode: "new", status, meta: { title, description, author, category, year }, extras, text, chapters, original: extras && source === "pdf" && keepOriginal });
         setFile(null); setTitle(""); setDescription(""); setAuthor(""); setCategory(""); setYear("");
         imgs.reset();
         if (input.current) input.current.value = "";
@@ -228,10 +237,10 @@ const CHIP: Record<AdminBook["status"], [string, string]> = {
   draft: ["chip chip-draft", "Borrador"],
   uploading: ["chip chip-busy", "Subiendo"],
 };
-type PanelName = "edit" | "codes" | "replace" | "delete" | "history" | "original" | "numbering" | "text";
+type PanelName = "edit" | "codes" | "replace" | "delete" | "history" | "original" | "numbering" | "text" | "chapters";
 const GRID = "md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6.5rem_7rem_20rem] md:items-center md:gap-4";
 
-function BookRow({ book, reload, phone, dl, extras, text }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean; extras: boolean; text: boolean }) {
+function BookRow({ book, reload, phone, dl, extras, text, chapters }: { book: AdminBook; reload: () => void; phone: boolean; dl: boolean; extras: boolean; text: boolean; chapters: boolean }) {
   const toast = useToast();
   const [panel, setPanel] = useState<PanelName | null>(null);
   const [busy, setBusy] = useState(false);
@@ -244,9 +253,9 @@ function BookRow({ book, reload, phone, dl, extras, text }: { book: AdminBook; r
   const uploading = book.status === "uploading";
   /** resume an interrupted upload, continue a pending replacement, or start a replacement */
   const startReplace = (src: { file: File } | { images: ImagePlan }) =>
-    up.start(uploading ? { ...src, mode: "resume", bookId: book.id, extras, text }
-      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published", extras, text }
-      : { ...src, mode: "replace", bookId: book.id, extras, text });
+    up.start(uploading ? { ...src, mode: "resume", bookId: book.id, extras, text, chapters }
+      : book.pending_replacement ? { ...src, mode: "resume", bookId: book.pending_replacement, status: "published", extras, text, chapters }
+      : { ...src, mode: "replace", bookId: book.id, extras, text, chapters });
   const toggle = (p: PanelName) => setPanel(panel === p ? null : p);
   const [chipClass, chipText] = CHIP[book.status];
 
@@ -285,6 +294,7 @@ function BookRow({ book, reload, phone, dl, extras, text }: { book: AdminBook; r
               {extras && <button className="btn btn-sm" onClick={() => toggle("original")}>PDF original</button>}
               {extras && <button className="btn btn-sm" onClick={() => toggle("numbering")}>Numeración</button>}
               {text && <button className="btn btn-sm" onClick={() => toggle("text")}>Texto</button>}
+              <button className="btn btn-sm" onClick={() => toggle("chapters")}>Capítulos</button>
             </>
           )}
           <button className="btn btn-sm btn-danger" onClick={() => { setConfirm(""); setAskDelete(true); }}>Eliminar</button>
@@ -359,12 +369,13 @@ function BookRow({ book, reload, phone, dl, extras, text }: { book: AdminBook; r
           {panel === "numbering" && extras && <PageNumbering book={book} onSaved={reload} />}
 
           {panel === "text" && text && <TextPanel book={book} />}
+          {panel === "chapters" && <ChaptersPanel book={book} ready={chapters} onSaved={reload} />}
 
           {panel === "codes" && <CodesPanel book={book} onBookChanged={reload} />}
         </div>
       )}
 
-      {dl && <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} bookTitle={book.title} slug={book.slug} pageCount={book.page_count} mode="admin" bookId={book.id} labels={parseLabels(book.page_labels, book.page_count)} />}
+      {dl && <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} bookTitle={book.title} slug={book.slug} pageCount={book.page_count} mode="admin" bookId={book.id} labels={parseLabels(book.page_labels, book.page_count)} chapters={chapters ? parseChapters(book.chapters, book.page_count) : undefined} />}
       <ConfirmDialog
         open={askDelete} danger title="Eliminar libro" confirmLabel="Eliminar para siempre" busy={busy} confirmDisabled={confirm !== book.title}
         onCancel={() => setAskDelete(false)}
@@ -385,6 +396,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
   const [version, setVersion] = useState(0);
   const [tab, setTab] = useState<"books" | "users" | "downloads" | "messages" | "legal" | "maintenance">("books");
   const [extras, setExtras] = useState(false); // the sheet has books.page_labels / original_pdf_* (original PDF + page numbering)
+  const [chaptersOn, setChaptersOn] = useState(false); // the sheet has books.chapters
   const [dl, setDl] = useState(false); // the download features exist (sheet has the downloads tab and users.can_download)
   const [schema, setSchema] = useState(0); // bumped when "Actualizar base de datos" changed the sheet: features are looked up again
   const [text, setText] = useState(false); // the sheet has books.text_status / text_pages / allow_copy (selectable text)
@@ -397,8 +409,8 @@ export default function AdminApp({ siteName }: { siteName: string }) {
 
   useEffect(() => {
     let dead = false;
-    api<{ books: AdminBook[]; extras?: boolean }>("/api/admin/books")
-      .then((r) => { if (!dead) { setBooks(r.books); setExtras(!!r.extras); setBooksErr(""); } })
+    api<{ books: AdminBook[]; extras?: boolean; chapters?: boolean }>("/api/admin/books")
+      .then((r) => { if (!dead) { setBooks(r.books); setExtras(!!r.extras); setChaptersOn(!!r.chapters); setBooksErr(""); } })
       .catch((e) => {
         if (dead) return;
         if (e instanceof AuthError) router.replace("/admin/login");
@@ -494,7 +506,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
         </div>
       ) : (
       <div role="tabpanel" id="panel-books" aria-labelledby="tab-books" className="space-y-8">
-      <UploadCard onDone={load} phone={phone} extras={extras} text={text} />
+      <UploadCard onDone={load} phone={phone} extras={extras} text={text} chapters={chaptersOn} />
 
       {books === null && (booksErr || slow) ? (
         <ErrorState title="No se han podido cargar los libros" text={booksErr || "La hoja de cálculo está tardando en responder. Puedes esperar un poco más o reintentar."}
@@ -511,7 +523,7 @@ export default function AdminApp({ siteName }: { siteName: string }) {
               <span role="columnheader">Título</span><span role="columnheader">Estado</span><span role="columnheader">Páginas</span><span role="columnheader">Actualizado</span><span role="columnheader" className="text-right">Acciones</span>
             </div>
             <ul role="rowgroup" className="space-y-3 md:space-y-0">
-              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} extras={extras} text={text} />)}
+              {books.map((b) => <BookRow key={b.id} book={b} reload={load} phone={phone} dl={dl} extras={extras} text={text} chapters={chaptersOn} />)}
             </ul>
           </div>
         </section>

@@ -23,6 +23,8 @@ export interface Book {
   text_status: TextStatus;
   text_pages: number;
   allow_copy: boolean;
+  /** books.chapters (column added later): compact JSON [{t, p}] of chapter titles and first file pages (lib/chapters.ts); "" = none. */
+  chapters: string;
 }
 /** none: no page has text; partial: some pages still lack it (scans not recognised yet); full: every page was processed. */
 export type TextStatus = "none" | "partial" | "full";
@@ -63,6 +65,8 @@ export interface AdminBook extends PublicBook {
   pending_replacement: string | null;
   /** size in bytes of the stored original PDF; 0 when there is none */
   original_pdf_size: number;
+  /** chapters (see lib/chapters.ts); "" when the book has none */
+  chapters: string;
 }
 
 export interface AdminCode {

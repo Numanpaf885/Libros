@@ -12,5 +12,5 @@ export const GET = safe(async (req: Request, { params }: { params: Promise<{ slu
   if (!(await downloadsAvailable()) || !s.user.can_download) return jsonError(403, "No permitido");
   const book = await getBookBySlug((await params).slug);
   if (!book || book.status !== "published" || !(await userCanRead(s.user, book))) return jsonError(404, "No encontrado");
-  return ok(await downloadInfo(book));
+  return ok(await downloadInfo(book, book.allow_copy)); // the text goes in the PDF only when copying is allowed
 });

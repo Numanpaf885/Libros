@@ -9,5 +9,5 @@ export const GET = safe(async (req: Request, { params }: { params: Promise<{ id:
   const id = z.string().uuid().safeParse((await params).id);
   const book = id.success ? await getBookById(id.data) : null;
   if (!book) return jsonError(404, "No encontrado");
-  return ok(await downloadInfo(book));
+  return ok(await downloadInfo(book, true));
 });

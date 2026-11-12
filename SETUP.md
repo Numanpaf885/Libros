@@ -124,6 +124,13 @@ Readers can select the text of the pages and copy it (Ctrl/Cmd+C, or the context
 
 The text is stored in R2 next to the page images (`<book>/text/0001-0020.json`, 20 pages per file) and readers get it only through the same access check as the pages, with 60-second links. In Book mode a **Seleccionar texto** button (I-beam) next to Libro/PDF makes a mouse drag select text instead of turning the page; on phones a long-press always selects.
 
+## Capítulos, search and downloads with text
+
+1. Open `/admin` → **Mantenimiento** → **Actualizar base de datos** once. It adds a `chapters` column at the end of the `books` tab. Until it exists, readers see no chapters and the book's **Capítulos** panel says "Actualiza la base de datos en Mantenimiento"; search and downloads work anyway.
+2. **Chapters** (title + the page where each starts; a chapter ends on the page before the next one): when you upload a PDF that has bookmarks, they become its chapters. In the book's row, **Capítulos** lets you edit them, add or remove one, or read them again from the PDF's bookmarks (the stored original or a PDF on your computer). Readers get a **Capítulos** list in the reader, and **Descargar PDF** can download one chapter.
+3. **Search** (the magnifier in the reader, or Ctrl/Cmd+F): it searches the whole book's text (from the PDF or recognised by OCR), ignoring case and accents, lists the pages with a snippet and highlights the matches on the page. If **Permitir seleccionar y copiar texto** is off, it lists only the pages and how many matches each has, with no text. Books without text have no search.
+4. **Downloads carry the text:** a PDF made from the page images gets the book's text as an invisible layer over each page, so it can be searched and copied in any PDF viewer. When the pages include some recognised by OCR, the stored original is not sent as it is (it has no text there): the pages are cut from it and the recognised text is added. Readers get the text in their downloads only when copying is allowed for the book; the admin always does. The invisible text uses standard Helvetica: characters that Windows-1252 does not have (Greek letters, for example) are simplified or left as "?".
+
 ## Contacto, Mensajes and the legal pages
 
 1. Open `/admin` → **Mantenimiento** → **Actualizar base de datos** once. It creates two tabs: `messages` (the contact form) and `settings` (the legal details). Until they exist, `/contacto` says the form will be available soon, and **Mensajes** and **Ajustes legales** say "Actualiza la base de datos en Mantenimiento"; everything else works as before.

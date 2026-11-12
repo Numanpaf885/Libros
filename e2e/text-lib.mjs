@@ -138,6 +138,8 @@ export async function uploadPdf(br, { title, bytes, original = false }) {
   await p.setInputFiles("#pdf-file", { name: `${title}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(bytes) });
   await p.fill("#up-title", title);
   const keep = p.locator("input[name=keep-original]");
+  // the option appears once the admin knows the sheet has the columns for it (a cold dev server can take a while)
+  if (original) await keep.waitFor({ timeout: 60000 });
   if (await keep.count()) await keep.setChecked(original);
   await p.getByRole("button", { name: "Subir libro" }).click();
   await p.waitForSelector("text=Libro subido correctamente", { timeout: 180000 });
@@ -288,4 +290,66 @@ export async function makeMarginPdf() {
     out.push(truth);
   }
   return { bytes: await doc.save(), truth: out };
+}
+
+// ---- a book with chapters (PDF bookmarks) and words to search for ----
+export const CHAPTERS = [
+  { t: "Capítulo 1. La partida", p: 1 },
+  { t: "Capítulo 2. El viaje", p: 5 },
+  { t: "Capítulo 3. La llegada", p: 9 },
+];
+/** Sentences placed on known pages (the search tests look for them). */
+export const FIND = {
+  aero: { page: 7, s: "La AERODINÁMICA del ala explica por qué el avión se sostiene en el aire." },
+  brujula: [3, 10], // pages with "brújula"
+  split: { page: 7, word: "velocidad" }, // printed as "veloci-" at a line end and "dad" on the next line
+};
+const FILL = [
+  "El tren salió de la estación con las primeras luces y el maquinista saludó desde la cabina.",
+  "Los pasajeros guardaban silencio mientras el paisaje cambiaba de los campos a las montañas.",
+  "Nadie sabía cuánto duraría el trayecto, pero todos llevaban algo para leer durante el camino.",
+  "Al caer la tarde, las ventanas se llenaron de reflejos dorados y de sombras alargadas.",
+];
+/**
+ * A 12-page A4 PDF in three chapters with bookmarks (an outline pointing at pages 1, 5 and 9). Page 7 has FIND.aero and
+ * the word "velocidad" split by a hyphen across two lines; pages 3 and 10 mention "brújula". Every page also has a
+ * line "Página N del libro" to identify it. Returns the bytes.
+ */
+export async function makeChaptersPdf() {
+  const { PDFName, PDFHexString } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const times = await doc.embedFont(StandardFonts.TimesRoman);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { w: W, h: H } = A4;
+  const pages = [];
+  for (let n = 1; n <= 12; n++) {
+    const page = doc.addPage([W, H]);
+    pages.push(page);
+    let y = H - 90;
+    const ch = CHAPTERS.find((c) => c.p === n);
+    if (ch) { page.drawText(ch.t, { x: 70, y, size: 18, font: bold }); y -= 40; }
+    const line = (s) => { page.drawText(s, { x: 70, y, size: 12, font: times }); y -= 17; };
+    line(`Página ${n} del libro.`);
+    for (const f of FILL) line(f);
+    if (FIND.brujula.includes(n)) line("La brújula marcaba el norte aunque el cielo estuviera cubierto.");
+    if (n === FIND.aero.page) {
+      line(FIND.aero.s);
+      line("Cuanto mayor es la veloci-");
+      line("dad, mayor es la fuerza que empuja el ala hacia arriba.");
+    }
+    page.drawText(String(n), { x: W / 2, y: 40, size: 10, font: times });
+  }
+  // the bookmarks: /Outlines with one entry per chapter, each pointing at its first page
+  const ctx = doc.context;
+  const root = ctx.nextRef();
+  const refs = CHAPTERS.map(() => ctx.nextRef());
+  CHAPTERS.forEach((c, i) => {
+    const entry = { Title: PDFHexString.fromText(c.t), Parent: root, Dest: ctx.obj([pages[c.p - 1].ref, PDFName.of("Fit")]) };
+    if (i > 0) entry.Prev = refs[i - 1];
+    if (i < CHAPTERS.length - 1) entry.Next = refs[i + 1];
+    ctx.assign(refs[i], ctx.obj(entry));
+  });
+  ctx.assign(root, ctx.obj({ Type: "Outlines", First: refs[0], Last: refs[refs.length - 1], Count: CHAPTERS.length }));
+  doc.catalog.set(PDFName.of("Outlines"), root);
+  return doc.save();
 }
